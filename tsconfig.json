@@ -1,0 +1,3 @@
+{
+  "extends": "@PhotoPrinting/config/tsconfig.base.json"
+}
