@@ -38,7 +38,9 @@ https://api.printclub.chames.tn/api/auth/callback/google
 
 Email/password accounts require verification before sign-in. Create a Resend
 API key, verify the sending domain, and set `RESEND_API_KEY` plus a matching
-`EMAIL_FROM` address in `deploy/.env`. The API key is server-only.
+`EMAIL_FROM` address in `deploy/.env`. The API key is server-only. Verification
+mail is also capped at one message per address every 10 minutes, five per
+address per day, and 80 messages globally per day.
 
 Deploy from the repository root:
 

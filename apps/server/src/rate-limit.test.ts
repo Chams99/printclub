@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import {
 	createRateLimitGuard,
+	createVerificationEmailGuard,
 	getClientIp,
 	parseTrustedProxyIps,
 } from "./rate-limit";
@@ -48,5 +49,29 @@ describe("rate-limit guard", () => {
 				trustedProxyIps: parseTrustedProxyIps("192.0.2.0/24"),
 			}),
 		).toBe("10.0.0.1");
+	});
+
+	it("normalizes email addresses and blocks rapid verification sends", async () => {
+		const guard = createVerificationEmailGuard({
+			database: {} as never,
+			persistent: false,
+			globalKey: `test:verification:${crypto.randomUUID()}`,
+		});
+
+		expect((await guard(" Person@Example.com ")).allowed).toBe(true);
+		expect((await guard("person@example.com")).allowed).toBe(false);
+	});
+
+	it("applies a shared daily cap across different addresses", async () => {
+		const guard = createVerificationEmailGuard({
+			database: {} as never,
+			persistent: false,
+			globalDailyMax: 2,
+			globalKey: `test:verification:${crypto.randomUUID()}`,
+		});
+
+		expect((await guard("one@example.com")).allowed).toBe(true);
+		expect((await guard("two@example.com")).allowed).toBe(true);
+		expect((await guard("three@example.com")).allowed).toBe(false);
 	});
 });

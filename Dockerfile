@@ -12,6 +12,13 @@ COPY packages/config/package.json packages/config/package.json
 COPY packages/db/package.json packages/db/package.json
 COPY packages/ui/package.json packages/ui/package.json
 
+# The root postinstall runs Varlock code generation. Keep schemas in the
+# dependency layer, but never copy ignored .env files or deployment secrets.
+COPY apps/web/.env.schema apps/web/.env.schema
+COPY apps/server/.env.schema apps/server/.env.schema
+COPY packages/db/.env.schema packages/db/.env.schema
+RUN mkdir -p apps/web/src apps/server/src packages/db/src
+
 RUN bun install --frozen-lockfile
 
 FROM base AS migrate

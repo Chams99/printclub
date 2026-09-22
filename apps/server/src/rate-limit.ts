@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
+
 import type { Database } from "@PhotoPrinting/db";
 import { rateLimit } from "@PhotoPrinting/db/schema/auth";
-import { and, like, lt, sql } from "drizzle-orm";
+import { and, like, lt, or, sql } from "drizzle-orm";
 
 type RateLimitInput = {
 	key: string;
@@ -61,7 +63,10 @@ function scheduleApplicationBucketCleanup(database: Database, now: number) {
 		.delete(rateLimit)
 		.where(
 			and(
-				like(rateLimit.key, "demo-order:%"),
+				or(
+					like(rateLimit.key, "demo-order:%"),
+					like(rateLimit.key, "email-verification:%"),
+				),
 				lt(rateLimit.lastRequest, now - 24 * 60 * 60 * 1_000),
 			),
 		)
@@ -138,6 +143,60 @@ export function createRateLimitGuard(options: {
 	return async (input: RateLimitInput): Promise<RateLimitResult> => {
 		if (!options.persistent) return consumeMemory(input);
 		return consumeDatabase(options.database, input);
+	};
+}
+
+const verificationCooldownMs = 10 * 60 * 1_000;
+const verificationDailyMs = 24 * 60 * 60 * 1_000;
+const verificationDailyMax = 5;
+const verificationGlobalDailyMax = 80;
+
+function verificationEmailKey(email: string) {
+	return createHash("sha256")
+		.update(email.trim().toLowerCase())
+		.digest("hex");
+}
+
+/**
+ * Limits verification mail independently of request IP. Email addresses are
+ * hashed before they become bucket keys so the rate-limit table does not
+ * become a directory of customer addresses.
+ */
+export function createVerificationEmailGuard(options: {
+	database: Database;
+	persistent: boolean;
+	globalDailyMax?: number;
+	globalKey?: string;
+}) {
+	const guard = createRateLimitGuard(options);
+	const globalKey = options.globalKey ?? "email-verification:global";
+
+	return async (email: string): Promise<RateLimitResult> => {
+		const normalizedEmail = email.trim().toLowerCase();
+		if (!normalizedEmail) {
+			return { allowed: false, retryAfterSeconds: 60 };
+		}
+
+		const emailKey = `email-verification:${verificationEmailKey(normalizedEmail)}`;
+		const cooldown = await guard({
+			key: `${emailKey}:cooldown`,
+			windowMs: verificationCooldownMs,
+			max: 1,
+		});
+		if (!cooldown.allowed) return cooldown;
+
+		const daily = await guard({
+			key: `${emailKey}:daily`,
+			windowMs: verificationDailyMs,
+			max: verificationDailyMax,
+		});
+		if (!daily.allowed) return daily;
+
+		return guard({
+			key: `${globalKey}:daily`,
+			windowMs: verificationDailyMs,
+			max: options.globalDailyMax ?? verificationGlobalDailyMax,
+		});
 	};
 }
 

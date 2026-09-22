@@ -148,6 +148,6 @@ After changing auth plugins or schema options, run `bun run auth:generate` from 
 
 ## Abuse controls
 
-Production authentication rate limits use the shared PostgreSQL `rate_limit` table so limits survive restarts and are consistent across server replicas. Apply the database migrations before deploying the server. The API also applies a bounded per-IP request guard, a 2 MiB request-body limit, and per-user/per-IP limits for demo requests.
+Production authentication rate limits use the shared PostgreSQL `rate_limit` table so limits survive restarts and are consistent across server replicas. Apply the database migrations before deploying the server. The API also applies a bounded per-IP request guard, a 2 MiB request-body limit, and per-user/per-IP limits for demo requests. Verification mail adds a hashed per-address cooldown of one message per 10 minutes, a five-message daily limit per address, and an 80-message global daily cap. These limits fail closed if the shared bucket cannot be written.
 
 Set `TRUSTED_PROXY_IPS` to the addresses or CIDR ranges of the reverse proxy in front of the server. This allows the server to use the original client address safely; never populate it with arbitrary client-controlled values. Email verification is enforced for password accounts and requires the production Resend settings above. An adaptive CAPTCHA remains a launch requirement once real account creation is opened to the public.
