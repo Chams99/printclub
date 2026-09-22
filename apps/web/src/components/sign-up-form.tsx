@@ -24,39 +24,11 @@ export default function SignUpForm({
 	const { isPending } = authClient.useSession();
 	const [formError, setFormError] = useState<string | null>(null);
 	const [successMessage, setSuccessMessage] = useState<string | null>(null);
-	const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
-	const [isResending, setIsResending] = useState(false);
 	const [fieldErrors, setFieldErrors] = useState<
 		Partial<Record<"name" | "email" | "password", string>>
 	>({});
 	const [showValidationErrors, setShowValidationErrors] = useState(false);
 	const formErrorRef = useRef<HTMLDivElement>(null);
-
-	async function resendVerificationEmail() {
-		if (!submittedEmail) return;
-		setIsResending(true);
-		setFormError(null);
-		const result = await authClient.sendVerificationEmail({
-			email: submittedEmail,
-			callbackURL: `${window.location.origin}${returnTo ?? "/dashboard"}`,
-		});
-		setIsResending(false);
-		if (result.error) {
-			const message = getAuthErrorMessage(
-				result,
-				"We couldn't resend the verification email. Try again in a moment.",
-			);
-			setFormError(message);
-			toast.error(message);
-			return;
-		}
-		setSuccessMessage(
-			ENV.NODE_ENV === "development" && window.location.hostname === "localhost"
-				? "Local email delivery is disabled; the API terminal prints the verification link."
-				: `Verification email sent to ${submittedEmail}. Check your inbox and spam folder.`,
-		);
-		toast.success("Verification email sent");
-	}
 
 	const form = useForm({
 		defaultValues: {
@@ -68,7 +40,6 @@ export default function SignUpForm({
 			try {
 				setFormError(null);
 				setSuccessMessage(null);
-				setSubmittedEmail(null);
 				await authClient.signUp.email(
 					{
 						email: value.email,
@@ -78,18 +49,17 @@ export default function SignUpForm({
 					},
 					{
 						onSuccess: () => {
-							setSubmittedEmail(value.email.trim());
 							setSuccessMessage(
 								ENV.NODE_ENV === "development" &&
 									window.location.hostname === "localhost"
-									? "Account created. Local email delivery is disabled; the API terminal prints the verification link."
-									: `Account created. We sent a verification email to ${value.email.trim()}. Check your inbox and spam folder.`,
+									? "If this email was new, the API terminal has the verification link. If you already use Google with this email, choose Sign In with Google instead."
+									: "If this email was new, we sent a verification email. If you already use Google with this email, choose Sign In with Google instead. Check your inbox and spam folder.",
 							);
 							toast.success(
 								ENV.NODE_ENV === "development" &&
 									window.location.hostname === "localhost"
-									? "Account created — check the API terminal"
-									: "Check your email to verify your account",
+									? "Check the API terminal or sign in with Google"
+									: "Check your email or sign in with Google",
 							);
 						},
 						onError: (error) => {
@@ -190,17 +160,6 @@ export default function SignUpForm({
 			{successMessage ? (
 				<div className="auth-form-card__success" role="status">
 					<span>{successMessage}</span>
-					{submittedEmail ? (
-						<Button
-							type="button"
-							variant="link"
-							className="auth-form-card__success-action"
-							disabled={isResending}
-							onClick={() => void resendVerificationEmail()}
-						>
-							{isResending ? "Sending…" : "Resend verification"}
-						</Button>
-					) : null}
 				</div>
 			) : null}
 			<GoogleSignInButton
