@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "start": "bun start.mjs",
     "serve": "vite preview",
     "dev": "vite dev",
     "check-types": "vite build && tsc --noEmit",
@@ -24,6 +25,7 @@
     "@varlock/vite-integration": "1.5.1",
     "better-auth": "catalog:",
     "lucide-react": "catalog:",
+    "motion": "^12.23.24",
     "next-themes": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",

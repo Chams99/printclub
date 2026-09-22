@@ -1,5 +1,13 @@
 import { defineRelationsPart } from "drizzle-orm";
-import { pgTable, text, timestamp, boolean, index } from "drizzle-orm/pg-core";
+import {
+	bigint,
+	boolean,
+	index,
+	integer,
+	pgTable,
+	text,
+	timestamp,
+} from "drizzle-orm/pg-core";
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
@@ -72,6 +80,17 @@ export const verification = pgTable(
   },
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
+
+/**
+ * Shared Better Auth and application abuse-control buckets.
+ * `lastRequest` is milliseconds since epoch, matching Better Auth's database
+ * rate-limit adapter rather than a SQL timestamp.
+ */
+export const rateLimit = pgTable("rate_limit", {
+	key: text("key").primaryKey(),
+	count: integer("count").notNull(),
+	lastRequest: bigint("last_request", { mode: "number" }).notNull(),
+});
 
 export const authRelations = defineRelationsPart({ user, session, account, verification }, (r) => ({
   user: {
