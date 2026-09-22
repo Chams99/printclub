@@ -146,7 +146,7 @@ export function createRateLimitGuard(options: {
 	};
 }
 
-const verificationCooldownMs = 10 * 60 * 1_000;
+const verificationCooldownMs = 5 * 60 * 1_000;
 const verificationDailyMs = 24 * 60 * 60 * 1_000;
 const verificationDailyMax = 5;
 const verificationGlobalDailyMax = 80;

@@ -62,6 +62,7 @@ export function createAuth(
 			customRules: {
 				"/sign-in/email": { window: 60, max: 5 },
 				"/sign-up/email": { window: 60, max: 3 },
+				"/send-verification-email": { window: 60, max: 5 },
 				"/callback/*": { window: 60, max: 10 },
 			},
 		},

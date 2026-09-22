@@ -59,7 +59,9 @@ describe("rate-limit guard", () => {
 		});
 
 		expect((await guard(" Person@Example.com ")).allowed).toBe(true);
-		expect((await guard("person@example.com")).allowed).toBe(false);
+		const blocked = await guard("person@example.com");
+		expect(blocked.allowed).toBe(false);
+		expect(blocked.retryAfterSeconds).toBeGreaterThanOrEqual(299);
 	});
 
 	it("applies a shared daily cap across different addresses", async () => {
