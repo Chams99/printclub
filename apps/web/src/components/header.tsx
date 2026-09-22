@@ -1,6 +1,8 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Menu, X } from "lucide-react";
 
+import UserMenu from "./user-menu";
+
 export default function Header() {
 	const pathname = useRouterState({
 		select: (state) => state.location.pathname,
@@ -27,9 +29,7 @@ export default function Header() {
 							<Link to="/how-it-works">How it works</Link>
 						</nav>
 						<div className="site-header__actions site-header__actions--v2">
-							<Link className="site-header__login" to="/login" search={{}}>
-								Sign in
-							</Link>
+							<UserMenu />
 							<Link
 								className="site-header__shop site-header__shop--v2"
 								to="/create"
