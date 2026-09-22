@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title>printclub</title>
+  <rect width="64" height="64" rx="18" fill="#3454D1"/>
+  <!-- A small stack of paper gives the mark its print-shop character. -->
+  <path d="M21 11h20a7 7 0 0 1 7 7v27" fill="none" stroke="#FAFAF8" stroke-linecap="round" stroke-width="3.5" opacity=".72"/>
+  <!-- The folded front print stays legible at favicon size. -->
+  <path fill="#FAFAF8" d="M16 14h23l9 9v27H16V14Z"/>
+  <path fill="#3454D1" d="M39 14v10h9L39 14Z"/>
+  <circle cx="28.5" cy="32" r="5" fill="#3454D1"/>
+  <path d="M24 44h16" fill="none" stroke="#3454D1" stroke-linecap="round" stroke-width="3.5"/>
+</svg>

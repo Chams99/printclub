@@ -1,0 +1,80 @@
+# printclub VPS deployment
+
+This deployment runs printclub beside the portfolio through the existing external
+Docker network named `traefik`:
+
+- `https://printclub.chames.tn` → the TanStack Start web container
+- `https://api.printclub.chames.tn` → the Elysia API container
+- PostgreSQL stays on printclub’s private Docker network and has no host port
+
+The deployment is for the portfolio demo. It does not add payments, fulfillment,
+cloud project storage, production exports, or a public staff console. `/staff` is
+disabled in production until server-side staff roles and audit logging exist.
+
+## First deployment
+
+On the VPS, clone the repository and make sure the existing Traefik network is
+present:
+
+```bash
+docker network inspect traefik >/dev/null
+```
+
+Create the deployment environment file and use unique values:
+
+```bash
+cp deploy/.env.example deploy/.env
+chmod 600 deploy/.env
+```
+
+Set `TRUSTED_PROXY_IPS` to the actual Traefik Docker network CIDR. Generate
+`BETTER_AUTH_SECRET` and `POSTGRES_PASSWORD` with a password manager or a
+cryptographically secure generator. The production Google OAuth client must list:
+
+```text
+https://printclub.chames.tn
+https://api.printclub.chames.tn/api/auth/callback/google
+```
+
+Email/password accounts require verification before sign-in. Create a Resend
+API key, verify the sending domain, and set `RESEND_API_KEY` plus a matching
+`EMAIL_FROM` address in `deploy/.env`. The API key is server-only.
+
+Deploy from the repository root:
+
+```bash
+bash deploy/deploy.sh
+```
+
+The script builds the web and API images, starts PostgreSQL privately, applies
+Drizzle migrations, and waits for both application health checks before returning.
+
+## Backups and restore
+
+Create a compressed database backup before upgrades:
+
+```bash
+docker compose --env-file deploy/.env -f deploy/compose.yml exec -T postgres \
+  pg_dump -U printclub -d printclub --format=custom > "printclub-$(date +%Y%m%d-%H%M%S).dump"
+```
+
+Restore only during a planned maintenance window:
+
+```bash
+cat backup.dump | docker compose --env-file deploy/.env -f deploy/compose.yml exec -T postgres \
+  pg_restore -U printclub -d printclub --clean --if-exists --no-owner
+```
+
+Verify backups by restoring into a separate database before relying on them.
+
+## Operational checks
+
+```bash
+docker compose --env-file deploy/.env -f deploy/compose.yml ps
+docker compose --env-file deploy/.env -f deploy/compose.yml logs --tail 100 api web
+curl -fsS https://api.printclub.chames.tn/health
+curl -fsS https://printclub.chames.tn/health
+```
+
+Do not publish PostgreSQL’s port, commit `deploy/.env`, or expose the API with a
+different origin than the one configured in `CORS_ORIGIN` and Better Auth.

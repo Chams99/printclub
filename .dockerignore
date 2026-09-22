@@ -1,0 +1,14 @@
+.git
+.gitignore
+.turbo
+node_modules
+**/node_modules
+**/dist
+**/.tanstack
+**/.vite
+**/.env
+**/.env.*
+!**/.env.schema
+*.log
+coverage
+deploy/.env

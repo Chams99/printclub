@@ -1,0 +1,124 @@
+name: printclub
+
+x-traefik: &traefik
+  networks:
+    - traefik
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-printclub}
+      POSTGRES_USER: ${POSTGRES_USER:-printclub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/.env}
+    volumes:
+      - printclub_postgres_data:/var/lib/postgresql
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - internal
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: migrate
+    command: ["bun", "x", "drizzle-kit", "migrate", "--config", "packages/db/drizzle.config.ts"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in deploy/.env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: "no"
+
+  api:
+    <<: *traefik
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: api
+    environment:
+      NODE_ENV: production
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in deploy/.env}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?Set BETTER_AUTH_URL in deploy/.env}
+      CORS_ORIGIN: ${CORS_ORIGIN:?Set CORS_ORIGIN in deploy/.env}
+      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:?Set TRUSTED_PROXY_IPS in deploy/.env}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:?Set RESEND_API_KEY in deploy/.env}
+      EMAIL_FROM: ${EMAIL_FROM:?Set EMAIL_FROM in deploy/.env}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in deploy/.env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "3000"
+    networks:
+      - internal
+      - traefik
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:3000/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.printclub-api.rule=Host(`${PRINTCLUB_API_HOST}`)
+      - traefik.http.routers.printclub-api.entrypoints=websecure
+      - traefik.http.routers.printclub-api.tls.certresolver=myresolver
+      - traefik.http.routers.printclub-api.middlewares=default-chain@file
+      - traefik.http.services.printclub-api.loadbalancer.server.port=3000
+
+  web:
+    <<: *traefik
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: web
+      args:
+        VITE_SERVER_URL: ${VITE_SERVER_URL:?Set VITE_SERVER_URL in deploy/.env}
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3001
+    depends_on:
+      api:
+        condition: service_healthy
+    expose:
+      - "3001"
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:3001/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.printclub-web.rule=Host(`${PRINTCLUB_WEB_HOST}`)
+      - traefik.http.routers.printclub-web.entrypoints=websecure
+      - traefik.http.routers.printclub-web.tls.certresolver=myresolver
+      - traefik.http.routers.printclub-web.middlewares=default-chain@file
+      - traefik.http.services.printclub-web.loadbalancer.server.port=3001
+
+networks:
+  internal:
+    driver: bridge
+    internal: true
+  traefik:
+    external: true
+
+volumes:
+  printclub_postgres_data:

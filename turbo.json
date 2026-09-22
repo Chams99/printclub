@@ -13,6 +13,10 @@
     "check-types": {
       "dependsOn": ["^check-types"]
     },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
     "dev": {
       "cache": false,
       "persistent": true
@@ -22,8 +26,7 @@
       "interactive": true
     },
     "db:generate": {
-      "cache": false,
-      "interactive": true
+      "cache": false
     },
     "db:migrate": {
       "cache": false,
@@ -53,12 +56,16 @@
     "CI",
     "CORS_ORIGIN",
     "DATABASE_URL",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "TRUSTED_PROXY_IPS",
     "NODE_ENV",
     "VERCEL",
     "VERCEL_ENV",
     "VERCEL_PROJECT_PRODUCTION_URL",
     "VERCEL_URL",
     "VITE_SERVER_URL",
+    "VITE_GOOGLE_CLIENT_ID",
     "_VARLOCK_ENV_KEY"
   ],
   "globalDependencies": [".env*", "apps/*/.env*", "packages/*/.env*"]
