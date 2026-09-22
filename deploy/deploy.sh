@@ -22,7 +22,9 @@ echo "Starting the private database..."
 compose up -d postgres
 
 echo "Applying reviewed database migrations..."
-compose run --rm migrate
+# The migration service has its own Docker build target. Force a rebuild so a
+# newly pulled migration file is never skipped by a cached image.
+compose run --rm --build migrate
 
 echo "Starting the API and web services..."
 compose up -d api web
