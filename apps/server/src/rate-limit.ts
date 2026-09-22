@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type { Database } from "@PhotoPrinting/db";
 import { rateLimit } from "@PhotoPrinting/db/schema/auth";
@@ -110,7 +110,7 @@ async function consumeDatabase(
 	const windowStart = now - input.windowMs;
 	const [bucket] = await database
 		.insert(rateLimit)
-		.values({ key: input.key, count: 1, lastRequest: now })
+		.values({ id: randomUUID(), key: input.key, count: 1, lastRequest: now })
 		.onConflictDoUpdate({
 			target: rateLimit.key,
 			set: {
