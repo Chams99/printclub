@@ -87,7 +87,11 @@ export const verification = pgTable(
  * rate-limit adapter rather than a SQL timestamp.
  */
 export const rateLimit = pgTable("rate_limit", {
-	key: text("key").primaryKey(),
+	// Better Auth's database adapter uses the row id for atomic increment/update
+	// operations. Keep the logical bucket key unique so application guards can
+	// continue to upsert by key.
+	id: text("id").primaryKey(),
+	key: text("key").notNull().unique(),
 	count: integer("count").notNull(),
 	lastRequest: bigint("last_request", { mode: "number" }).notNull(),
 });
