@@ -9,6 +9,7 @@ import z from "zod";
 
 import { authClient } from "@/lib/auth-client";
 import { getAuthErrorMessage, getFormErrorMessage } from "@/lib/form-error";
+import { ENV } from "@/runtime-env";
 
 import GoogleSignInButton from "./google-sign-in-button";
 import Loader from "./loader";
@@ -23,11 +24,39 @@ export default function SignUpForm({
 	const { isPending } = authClient.useSession();
 	const [formError, setFormError] = useState<string | null>(null);
 	const [successMessage, setSuccessMessage] = useState<string | null>(null);
+	const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
+	const [isResending, setIsResending] = useState(false);
 	const [fieldErrors, setFieldErrors] = useState<
 		Partial<Record<"name" | "email" | "password", string>>
 	>({});
 	const [showValidationErrors, setShowValidationErrors] = useState(false);
 	const formErrorRef = useRef<HTMLDivElement>(null);
+
+	async function resendVerificationEmail() {
+		if (!submittedEmail) return;
+		setIsResending(true);
+		setFormError(null);
+		const result = await authClient.sendVerificationEmail({
+			email: submittedEmail,
+			callbackURL: `${window.location.origin}${returnTo ?? "/dashboard"}`,
+		});
+		setIsResending(false);
+		if (result.error) {
+			const message = getAuthErrorMessage(
+				result,
+				"We couldn't resend the verification email. Try again in a moment.",
+			);
+			setFormError(message);
+			toast.error(message);
+			return;
+		}
+		setSuccessMessage(
+			ENV.NODE_ENV === "development" && window.location.hostname === "localhost"
+				? "Local email delivery is disabled; the API terminal prints the verification link."
+				: `Verification email sent to ${submittedEmail}. Check your inbox and spam folder.`,
+		);
+		toast.success("Verification email sent");
+	}
 
 	const form = useForm({
 		defaultValues: {
@@ -39,6 +68,7 @@ export default function SignUpForm({
 			try {
 				setFormError(null);
 				setSuccessMessage(null);
+				setSubmittedEmail(null);
 				await authClient.signUp.email(
 					{
 						email: value.email,
@@ -48,10 +78,19 @@ export default function SignUpForm({
 					},
 					{
 						onSuccess: () => {
+							setSubmittedEmail(value.email.trim());
 							setSuccessMessage(
-								"Your account is ready. Check your email to verify it, then sign in.",
+								ENV.NODE_ENV === "development" &&
+									window.location.hostname === "localhost"
+									? "Account created. Local email delivery is disabled; the API terminal prints the verification link."
+									: `Account created. We sent a verification email to ${value.email.trim()}. Check your inbox and spam folder.`,
 							);
-							toast.success("Check your email to verify your account");
+							toast.success(
+								ENV.NODE_ENV === "development" &&
+									window.location.hostname === "localhost"
+									? "Account created — check the API terminal"
+									: "Check your email to verify your account",
+							);
 						},
 						onError: (error) => {
 							const message = getAuthErrorMessage(
@@ -151,6 +190,17 @@ export default function SignUpForm({
 			{successMessage ? (
 				<div className="auth-form-card__success" role="status">
 					<span>{successMessage}</span>
+					{submittedEmail ? (
+						<Button
+							type="button"
+							variant="link"
+							className="auth-form-card__success-action"
+							disabled={isResending}
+							onClick={() => void resendVerificationEmail()}
+						>
+							{isResending ? "Sending…" : "Resend verification"}
+						</Button>
+					) : null}
 				</div>
 			) : null}
 			<GoogleSignInButton

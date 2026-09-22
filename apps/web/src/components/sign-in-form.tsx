@@ -9,7 +9,11 @@ import { toast } from "sonner";
 import z from "zod";
 
 import { authClient } from "@/lib/auth-client";
-import { getAuthErrorMessage, getFormErrorMessage } from "@/lib/form-error";
+import {
+	getAuthErrorCode,
+	getAuthErrorMessage,
+	getFormErrorMessage,
+} from "@/lib/form-error";
 
 import GoogleSignInButton from "./google-sign-in-button";
 import Loader from "./loader";
@@ -26,11 +30,37 @@ export default function SignInForm({
 	});
 	const { isPending } = authClient.useSession();
 	const [formError, setFormError] = useState<string | null>(null);
+	const [verificationEmail, setVerificationEmail] = useState<string | null>(
+		null,
+	);
+	const [isResending, setIsResending] = useState(false);
 	const [fieldErrors, setFieldErrors] = useState<
 		Partial<Record<"email" | "password", string>>
 	>({});
 	const [showValidationErrors, setShowValidationErrors] = useState(false);
 	const formErrorRef = useRef<HTMLDivElement>(null);
+
+	async function resendVerificationEmail() {
+		if (!verificationEmail) return;
+		setIsResending(true);
+		setFormError(null);
+		const result = await authClient.sendVerificationEmail({
+			email: verificationEmail,
+			callbackURL: `${window.location.origin}${returnTo ?? "/dashboard"}`,
+		});
+		setIsResending(false);
+		if (result.error) {
+			const message = getAuthErrorMessage(
+				result,
+				"We couldn't resend the verification email. Try again in a moment.",
+			);
+			setFormError(message);
+			toast.error(message);
+			return;
+		}
+		setFormError(null);
+		toast.success("Verification email sent. Check your inbox and spam folder.");
+	}
 
 	const form = useForm({
 		defaultValues: {
@@ -39,6 +69,7 @@ export default function SignInForm({
 		},
 		onSubmit: async ({ value }) => {
 			try {
+				setVerificationEmail(null);
 				await authClient.signIn.email(
 					{
 						email: value.email,
@@ -51,6 +82,9 @@ export default function SignInForm({
 							toast.success("Sign in successful");
 						},
 						onError: (error) => {
+							if (getAuthErrorCode(error) === "EMAIL_NOT_VERIFIED") {
+								setVerificationEmail(value.email.trim());
+							}
 							const message = getAuthErrorMessage(
 								error,
 								"Sign in failed. Check your email and password and try again.",
@@ -129,6 +163,17 @@ export default function SignInForm({
 				>
 					<CircleAlert aria-hidden="true" />
 					<span>{formError}</span>
+					{verificationEmail ? (
+						<Button
+							type="button"
+							variant="link"
+							className="auth-form-card__alert-action"
+							disabled={isResending}
+							onClick={() => void resendVerificationEmail()}
+						>
+							{isResending ? "Sending…" : "Resend verification"}
+						</Button>
+					) : null}
 				</div>
 			) : null}
 			<GoogleSignInButton

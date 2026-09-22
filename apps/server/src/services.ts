@@ -21,7 +21,12 @@ export const auth = createAuth(
 		TRUSTED_PROXY_IPS: trustedProxyIps,
 		sendVerificationEmail: async ({ user, url }) => {
 			const limit = await verificationEmailGuard(user.email);
-			if (!limit.allowed) return;
+			if (!limit.allowed) {
+				// Do not report a successful signup when the delivery guard has
+				// deliberately suppressed the message. The client can then offer a
+				// truthful retry state instead of leaving the user waiting for mail.
+				throw new Error("Verification email temporarily unavailable");
+			}
 			await sendVerificationEmail({
 				to: user.email,
 				name: user.name,

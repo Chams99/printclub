@@ -51,6 +51,9 @@ export async function sendVerificationEmail({
 	});
 
 	if (!response.ok) {
-		throw new Error(`Email provider returned ${response.status}`);
+		console.error(
+			`[printclub] Verification email provider rejected the request (${response.status})`,
+		);
+		throw new Error("Email delivery failed");
 	}
 }

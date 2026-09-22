@@ -50,4 +50,22 @@ describe("verification email delivery", () => {
 		const body = (await request?.json()) as { html: string };
 		expect(body.html).toContain("&lt;Person&gt;");
 	});
+
+	it("does not expose provider details when delivery is rejected", async () => {
+		process.env.NODE_ENV = "production";
+		process.env.RESEND_API_KEY = "re_test_key";
+		process.env.EMAIL_FROM = "printclub <no-reply@example.com>";
+		globalThis.fetch = (async () =>
+			new Response("provider details", {
+				status: 403,
+			})) as unknown as typeof fetch;
+
+		await expect(
+			sendVerificationEmail({
+				to: "person@example.com",
+				name: "Person",
+				url: "https://example.com/verify?token=abc",
+			}),
+		).rejects.toThrow("Email delivery failed");
+	});
 });
