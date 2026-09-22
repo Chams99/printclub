@@ -14,6 +14,10 @@ import {
 	getAuthErrorMessage,
 	getFormErrorMessage,
 } from "@/lib/form-error";
+import {
+	formatVerificationCooldown,
+	useVerificationResendCooldown,
+} from "@/lib/verification-resend";
 
 import GoogleSignInButton from "./google-sign-in-button";
 import Loader from "./loader";
@@ -34,6 +38,8 @@ export default function SignInForm({
 		null,
 	);
 	const [isResending, setIsResending] = useState(false);
+	const { isCoolingDown, secondsRemaining, startCooldown } =
+		useVerificationResendCooldown();
 	const [fieldErrors, setFieldErrors] = useState<
 		Partial<Record<"email" | "password", string>>
 	>({});
@@ -41,7 +47,7 @@ export default function SignInForm({
 	const formErrorRef = useRef<HTMLDivElement>(null);
 
 	async function resendVerificationEmail() {
-		if (!verificationEmail) return;
+		if (!verificationEmail || isCoolingDown) return;
 		setIsResending(true);
 		setFormError(null);
 		const result = await authClient.sendVerificationEmail({
@@ -59,6 +65,7 @@ export default function SignInForm({
 			return;
 		}
 		setFormError(null);
+		startCooldown();
 		toast.success("Verification email sent. Check your inbox and spam folder.");
 	}
 
@@ -168,10 +175,14 @@ export default function SignInForm({
 							type="button"
 							variant="link"
 							className="auth-form-card__alert-action"
-							disabled={isResending}
+							disabled={isResending || isCoolingDown}
 							onClick={() => void resendVerificationEmail()}
 						>
-							{isResending ? "Sending…" : "Resend verification"}
+							{isResending
+								? "Sending…"
+								: isCoolingDown
+									? `Resend in ${formatVerificationCooldown(secondsRemaining)}`
+									: "Resend verification"}
 						</Button>
 					) : null}
 				</div>

@@ -6,6 +6,10 @@ import { useCallback, useEffect, useState } from "react";
 import GoogleSignInButton from "@/components/google-sign-in-button";
 import { authClient, googleSignInEnabled } from "@/lib/auth-client";
 import { getAuthErrorMessage } from "@/lib/form-error";
+import {
+	formatVerificationCooldown,
+	useVerificationResendCooldown,
+} from "@/lib/verification-resend";
 
 export const Route = createFileRoute("/_auth/account")({
 	component: AccountPage,
@@ -22,6 +26,8 @@ function AccountPage() {
 	const [accounts, setAccounts] = useState<LinkedAccount[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [isResending, setIsResending] = useState(false);
+	const { isCoolingDown, secondsRemaining, startCooldown } =
+		useVerificationResendCooldown();
 	const [message, setMessage] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 
@@ -46,7 +52,7 @@ function AccountPage() {
 	}, [loadAccounts]);
 
 	async function resendVerification() {
-		if (!user?.email) return;
+		if (!user?.email || isCoolingDown) return;
 		setIsResending(true);
 		setError(null);
 		setMessage(null);
@@ -64,6 +70,7 @@ function AccountPage() {
 			);
 			return;
 		}
+		startCooldown();
 		setMessage("Verification email sent. Check your inbox and spam folder.");
 	}
 
@@ -115,10 +122,14 @@ function AccountPage() {
 						<Button
 							type="button"
 							variant="outline"
-							disabled={isResending}
+							disabled={isResending || isCoolingDown}
 							onClick={() => void resendVerification()}
 						>
-							{isResending ? "Sending…" : "Send verification email"}
+							{isResending
+								? "Sending…"
+								: isCoolingDown
+									? `Resend in ${formatVerificationCooldown(secondsRemaining)}`
+									: "Send verification email"}
 						</Button>
 					) : null}
 				</section>
