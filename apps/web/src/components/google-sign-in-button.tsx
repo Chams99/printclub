@@ -40,6 +40,31 @@ declare global {
 }
 
 let googleScriptPromise: Promise<void> | null = null;
+type GoogleCredentialHandler = (
+	response: GoogleCredentialResponse,
+) => void | Promise<void>;
+
+// Google Identity Services is a page-level singleton. React can mount this
+// component more than once (including StrictMode's development remount), but
+// GIS warns and replaces the callback whenever initialize() is called again.
+// Keep one initialization per client and route the response to the currently
+// mounted button instead.
+let googleInitializedClientId: string | null = null;
+let activeGoogleCredentialHandler: GoogleCredentialHandler | null = null;
+
+function ensureGoogleInitialized(clientId: string) {
+	if (!window.google?.accounts.id) return;
+	if (googleInitializedClientId === clientId) return;
+
+	window.google.accounts.id.initialize({
+		client_id: clientId,
+		callback: (response) => {
+			void activeGoogleCredentialHandler?.(response);
+		},
+		cancel_on_tap_outside: true,
+	});
+	googleInitializedClientId = clientId;
+}
 
 function loadGoogleIdentityServices() {
 	if (typeof window === "undefined") {
@@ -164,11 +189,8 @@ export default function GoogleSignInButton({
 				if (disposed || !buttonRef.current || !window.google?.accounts.id) {
 					return;
 				}
-				window.google.accounts.id.initialize({
-					client_id: ENV.VITE_GOOGLE_CLIENT_ID as string,
-					callback: handleCredential,
-					cancel_on_tap_outside: true,
-				});
+				activeGoogleCredentialHandler = handleCredential;
+				ensureGoogleInitialized(ENV.VITE_GOOGLE_CLIENT_ID as string);
 				const renderGoogleButton = () => {
 					if (disposed || !buttonRef.current || !window.google?.accounts.id) {
 						return;
@@ -202,6 +224,9 @@ export default function GoogleSignInButton({
 
 		return () => {
 			disposed = true;
+			if (activeGoogleCredentialHandler === handleCredential) {
+				activeGoogleCredentialHandler = null;
+			}
 			resizeObserver?.disconnect();
 			buttonRef.current?.replaceChildren();
 		};
