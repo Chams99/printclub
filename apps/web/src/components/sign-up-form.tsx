@@ -52,14 +52,14 @@ export default function SignUpForm({
 							setSuccessMessage(
 								ENV.NODE_ENV === "development" &&
 									window.location.hostname === "localhost"
-									? "If this email was new, the API terminal has the verification link. If you already use Google with this email, choose Sign In with Google instead."
-									: "If this email was new, we sent a verification email. If you already use Google with this email, choose Sign In with Google instead. Check your inbox and spam folder.",
+									? "If this address already belongs to a Google account, no email is sent—use Continue with Google above. For a new address, the API terminal has the verification link."
+									: "If this address already belongs to a Google account, no email is sent—use Continue with Google above. For a new address, check your inbox and spam folder for the verification email.",
 							);
 							toast.success(
 								ENV.NODE_ENV === "development" &&
 									window.location.hostname === "localhost"
-									? "Check the API terminal or sign in with Google"
-									: "Check your email or sign in with Google",
+									? "Use Google or check the API terminal"
+									: "Use Google or check your inbox",
 							);
 						},
 						onError: (error) => {
