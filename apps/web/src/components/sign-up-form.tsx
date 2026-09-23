@@ -2,7 +2,7 @@ import { Button } from "@PhotoPrinting/ui/components/button";
 import { Input } from "@PhotoPrinting/ui/components/input";
 import { Label } from "@PhotoPrinting/ui/components/label";
 import { useForm } from "@tanstack/react-form";
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, CircleCheck } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import z from "zod";
@@ -159,7 +159,14 @@ export default function SignUpForm({
 			) : null}
 			{successMessage ? (
 				<div className="auth-form-card__success" role="status">
-					<span>{successMessage}</span>
+					<CircleCheck
+						className="auth-form-card__success-icon"
+						aria-hidden="true"
+					/>
+					<div className="auth-form-card__success-body">
+						<strong>Next step</strong>
+						<span>{successMessage}</span>
+					</div>
 				</div>
 			) : null}
 			<GoogleSignInButton
