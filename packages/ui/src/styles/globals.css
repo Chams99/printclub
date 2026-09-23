@@ -1039,8 +1039,9 @@
 .request-card--staff a svg { width: 0.85rem; }
 .staff-heading { display: flex; align-items: start; justify-content: space-between; }
 .staff-heading > svg { width: 2.5rem; height: 2.5rem; color: var(--primary); }
+.dashboard-page { padding-top: clamp(1.5rem, 3vw, 3rem); }
 .dashboard-shell { width: min(100%, 72rem); }
-.dashboard-subnav { display: flex; align-items: center; gap: 1.1rem; margin-bottom: clamp(2.5rem, 6vw, 4.5rem); color: var(--print-muted); font-size: .75rem; font-weight: 700; }
+.dashboard-subnav { display: flex; align-items: center; gap: 1.1rem; margin-bottom: clamp(1.75rem, 3vw, 2.5rem); color: var(--print-muted); font-size: .75rem; font-weight: 700; }
 .dashboard-subnav a { color: inherit; text-decoration: none; }
 .dashboard-subnav a:hover { color: var(--print-ink); }
 .dashboard-subnav__current { color: var(--print-ink); }
