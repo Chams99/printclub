@@ -1151,7 +1151,10 @@ body { background: var(--print-paper); color: var(--print-ink); }
 .site-header__actions--v2 [data-slot="button"]:hover, .site-header__actions--v2 [data-slot="button"][aria-expanded="true"] { background: var(--print-soft); color: var(--print-ink); }
 .site-header__shop--v2 { border-radius: 999px; background: var(--print-blue); color: white; box-shadow: 0 5px 14px color-mix(in srgb, var(--print-blue) 24%, transparent); }
 .site-header__shop--v2:hover { background: var(--print-blue-dark); }
-.user-menu__trigger { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; }
+.site-header__actions--v2 .user-menu__trigger { min-width: 5.25rem; min-height: 2.35rem; justify-content: center; border: 1px solid var(--print-line); border-radius: 999px; background: var(--print-paper); color: var(--print-ink); font-size: .78rem; font-weight: 650; }
+.site-header__actions--v2 .user-menu__trigger:hover, .site-header__actions--v2 .user-menu__trigger[aria-expanded="true"] { border-color: var(--print-blue); background: #f0f3ff; color: var(--print-blue); }
+.user-menu__name { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-menu__trigger > svg { width: .85rem; height: .85rem; flex: 0 0 auto; }
 .user-menu__content { width: 16rem; min-width: 16rem; padding: .4rem; border: 1px solid var(--print-line); border-radius: .9rem; background: var(--print-paper); box-shadow: 0 1rem 2.5rem color-mix(in srgb, var(--print-ink) 14%, transparent); }
 .user-menu__label { padding: .5rem .65rem .2rem; color: var(--print-muted); font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .user-menu__email { overflow: hidden; padding: .15rem .65rem .65rem; color: var(--print-ink); font-size: .78rem; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
