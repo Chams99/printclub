@@ -21,6 +21,7 @@ import {
 
 import GoogleSignInButton from "./google-sign-in-button";
 import Loader from "./loader";
+import { TurnstileChallenge, useTurnstile } from "./turnstile-challenge";
 
 export default function SignInForm({
 	onSwitchToSignUp,
@@ -45,15 +46,30 @@ export default function SignInForm({
 	>({});
 	const [showValidationErrors, setShowValidationErrors] = useState(false);
 	const formErrorRef = useRef<HTMLDivElement>(null);
+	const turnstile = useTurnstile("sign-in");
 
 	async function resendVerificationEmail() {
 		if (!verificationEmail || isCoolingDown) return;
+		if (turnstile.enabled && !turnstile.token) {
+			setFormError(
+				turnstile.loadError
+					? "The security check could not load. Check your connection and try again."
+					: "Complete the security check before requesting another email.",
+			);
+			return;
+		}
 		setIsResending(true);
 		setFormError(null);
-		const result = await authClient.sendVerificationEmail({
-			email: verificationEmail,
-			callbackURL: `${window.location.origin}${returnTo ?? "/dashboard"}`,
-		});
+		const result = await authClient.sendVerificationEmail(
+			{
+				email: verificationEmail,
+				callbackURL: `${window.location.origin}${returnTo ?? "/dashboard"}`,
+			},
+			turnstile.token
+				? { headers: { "X-Printclub-Turnstile": turnstile.token } }
+				: undefined,
+		);
+		turnstile.reset();
 		setIsResending(false);
 		if (result.error) {
 			const message = getAuthErrorMessage(
@@ -75,6 +91,14 @@ export default function SignInForm({
 			password: "",
 		},
 		onSubmit: async ({ value }) => {
+			if (turnstile.enabled && !turnstile.token) {
+				setFormError(
+					turnstile.loadError
+						? "The security check could not load. Check your connection and try again."
+						: "Complete the security check before signing in.",
+				);
+				return;
+			}
 			try {
 				setVerificationEmail(null);
 				await authClient.signIn.email(
@@ -83,6 +107,13 @@ export default function SignInForm({
 						password: value.password,
 					},
 					{
+						...(turnstile.token
+							? {
+									headers: {
+										"X-Printclub-Turnstile": turnstile.token,
+									},
+								}
+							: {}),
 						onSuccess: () => {
 							if (returnTo) window.location.assign(returnTo);
 							else navigate({ to: "/dashboard" });
@@ -102,7 +133,9 @@ export default function SignInForm({
 						},
 					},
 				);
+				turnstile.reset();
 			} catch (error) {
+				turnstile.reset();
 				const message = getAuthErrorMessage(
 					error,
 					"Connection problem. Check your internet connection, then try again.",
@@ -346,6 +379,8 @@ export default function SignInForm({
 						</p>
 					) : null}
 				</div>
+
+				<TurnstileChallenge challenge={turnstile} />
 
 				<form.Subscribe selector={(state) => state.isSubmitting}>
 					{(isSubmitting) => (

@@ -13,6 +13,7 @@ import { ENV } from "@/runtime-env";
 
 import GoogleSignInButton from "./google-sign-in-button";
 import Loader from "./loader";
+import { TurnstileChallenge, useTurnstile } from "./turnstile-challenge";
 
 export default function SignUpForm({
 	onSwitchToSignIn,
@@ -30,6 +31,7 @@ export default function SignUpForm({
 	>({});
 	const [showValidationErrors, setShowValidationErrors] = useState(false);
 	const formErrorRef = useRef<HTMLDivElement>(null);
+	const turnstile = useTurnstile("sign-up");
 
 	const form = useForm({
 		defaultValues: {
@@ -38,6 +40,14 @@ export default function SignUpForm({
 			name: "",
 		},
 		onSubmit: async ({ value }) => {
+			if (turnstile.enabled && !turnstile.token) {
+				setFormError(
+					turnstile.loadError
+						? "The security check could not load. Check your connection and try again."
+						: "Complete the security check before creating your account.",
+				);
+				return;
+			}
 			try {
 				setFormError(null);
 				setSuccessTitle("Next step");
@@ -50,6 +60,13 @@ export default function SignUpForm({
 						callbackURL: `${window.location.origin}${returnTo ?? "/dashboard"}`,
 					},
 					{
+						...(turnstile.token
+							? {
+									headers: {
+										"X-Printclub-Turnstile": turnstile.token,
+									},
+								}
+							: {}),
 						onSuccess: () => {
 							const isLocalDevelopment =
 								ENV.NODE_ENV === "development" &&
@@ -81,7 +98,9 @@ export default function SignUpForm({
 						},
 					},
 				);
+				turnstile.reset();
 			} catch (error) {
+				turnstile.reset();
 				const message = getAuthErrorMessage(
 					error,
 					"Connection problem. Check your internet connection, then try again.",
@@ -403,6 +422,8 @@ export default function SignUpForm({
 						</p>
 					) : null}
 				</div>
+
+				<TurnstileChallenge challenge={turnstile} />
 
 				<form.Subscribe selector={(state) => state.isSubmitting}>
 					{(isSubmitting) => (

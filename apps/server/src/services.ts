@@ -2,6 +2,7 @@ import { createAuth } from "@PhotoPrinting/auth";
 import { createDb } from "@PhotoPrinting/db";
 
 import { sendVerificationEmail } from "./email";
+import { isEmailSuppressed } from "./email-suppression";
 import { ENV } from "./env.server";
 import {
 	createRateLimitGuard,
@@ -20,6 +21,9 @@ export const auth = createAuth(
 		...ENV,
 		TRUSTED_PROXY_IPS: trustedProxyIps,
 		sendVerificationEmail: async ({ user, url }) => {
+			if (await isEmailSuppressed(db, user.email)) {
+				throw new Error("Verification email temporarily unavailable");
+			}
 			const limit = await verificationEmailGuard(user.email);
 			if (!limit.allowed) {
 				// Do not report a successful signup when the delivery guard has

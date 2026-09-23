@@ -4,6 +4,10 @@ import { CircleAlert, CircleCheck, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import GoogleSignInButton from "@/components/google-sign-in-button";
+import {
+	TurnstileChallenge,
+	useTurnstile,
+} from "@/components/turnstile-challenge";
 import { authClient, googleSignInEnabled } from "@/lib/auth-client";
 import { getAuthErrorMessage } from "@/lib/form-error";
 import {
@@ -30,6 +34,7 @@ function AccountPage() {
 		useVerificationResendCooldown();
 	const [message, setMessage] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const turnstile = useTurnstile("send-verification-email");
 
 	const loadAccounts = useCallback(async () => {
 		setIsLoading(true);
@@ -53,13 +58,27 @@ function AccountPage() {
 
 	async function resendVerification() {
 		if (!user?.email || isCoolingDown) return;
+		if (turnstile.enabled && !turnstile.token) {
+			setError(
+				turnstile.loadError
+					? "The security check could not load. Check your connection and try again."
+					: "Complete the security check before requesting another email.",
+			);
+			return;
+		}
 		setIsResending(true);
 		setError(null);
 		setMessage(null);
-		const result = await authClient.sendVerificationEmail({
-			email: user.email,
-			callbackURL: `${window.location.origin}/account?verified=1`,
-		});
+		const result = await authClient.sendVerificationEmail(
+			{
+				email: user.email,
+				callbackURL: `${window.location.origin}/account?verified=1`,
+			},
+			turnstile.token
+				? { headers: { "X-Printclub-Turnstile": turnstile.token } }
+				: undefined,
+		);
+		turnstile.reset();
 		setIsResending(false);
 		if (result.error) {
 			setError(
@@ -119,18 +138,21 @@ function AccountPage() {
 							: "Verify this email before connecting another sign-in method."}
 					</p>
 					{!user?.emailVerified ? (
-						<Button
-							type="button"
-							variant="outline"
-							disabled={isResending || isCoolingDown}
-							onClick={() => void resendVerification()}
-						>
-							{isResending
-								? "Sending…"
-								: isCoolingDown
-									? `Resend in ${formatVerificationCooldown(secondsRemaining)}`
-									: "Send verification email"}
-						</Button>
+						<>
+							<TurnstileChallenge challenge={turnstile} />
+							<Button
+								type="button"
+								variant="outline"
+								disabled={isResending || isCoolingDown}
+								onClick={() => void resendVerification()}
+							>
+								{isResending
+									? "Sending…"
+									: isCoolingDown
+										? `Resend in ${formatVerificationCooldown(secondsRemaining)}`
+										: "Send verification email"}
+							</Button>
+						</>
 					) : null}
 				</section>
 

@@ -56,6 +56,9 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       RESEND_API_KEY: ${RESEND_API_KEY:?Set RESEND_API_KEY in deploy/.env}
       EMAIL_FROM: ${EMAIL_FROM:?Set EMAIL_FROM in deploy/.env}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+      TURNSTILE_EXPECTED_HOSTNAMES: ${TURNSTILE_EXPECTED_HOSTNAMES:-}
+      RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in deploy/.env}
     depends_on:
       postgres:
@@ -89,6 +92,7 @@ services:
       args:
         VITE_SERVER_URL: ${VITE_SERVER_URL:?Set VITE_SERVER_URL in deploy/.env}
         VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+        VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0

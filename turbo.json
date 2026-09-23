@@ -66,6 +66,7 @@
     "VERCEL_URL",
     "VITE_SERVER_URL",
     "VITE_GOOGLE_CLIENT_ID",
+    "VITE_TURNSTILE_SITE_KEY",
     "_VARLOCK_ENV_KEY"
   ],
   "globalDependencies": [".env*", "apps/*/.env*", "packages/*/.env*"]
