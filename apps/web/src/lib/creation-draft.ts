@@ -162,11 +162,17 @@ export async function saveCreationDraft(draft: CreationDraft): Promise<void> {
 		await transactDraft(next, "readwrite");
 		window.localStorage.setItem(currentDraftKey, next.id);
 	} catch {
-		window.localStorage.setItem(currentDraftKey, next.id);
-		window.localStorage.setItem(
-			`printclub:draft-fallback:${next.id}`,
-			JSON.stringify(next),
-		);
+		try {
+			window.localStorage.setItem(currentDraftKey, next.id);
+			window.localStorage.setItem(
+				`printclub:draft-fallback:${next.id}`,
+				JSON.stringify(next),
+			);
+		} catch {
+			throw new Error(
+				"Browser storage is full. Remove old printclub site data and try saving again.",
+			);
+		}
 	}
 }
 
