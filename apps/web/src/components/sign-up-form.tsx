@@ -23,6 +23,7 @@ export default function SignUpForm({
 }) {
 	const { isPending } = authClient.useSession();
 	const [formError, setFormError] = useState<string | null>(null);
+	const [successTitle, setSuccessTitle] = useState("Next step");
 	const [successMessage, setSuccessMessage] = useState<string | null>(null);
 	const [fieldErrors, setFieldErrors] = useState<
 		Partial<Record<"name" | "email" | "password", string>>
@@ -39,6 +40,7 @@ export default function SignUpForm({
 		onSubmit: async ({ value }) => {
 			try {
 				setFormError(null);
+				setSuccessTitle("Next step");
 				setSuccessMessage(null);
 				await authClient.signUp.email(
 					{
@@ -49,17 +51,23 @@ export default function SignUpForm({
 					},
 					{
 						onSuccess: () => {
-							setSuccessMessage(
+							const isLocalDevelopment =
 								ENV.NODE_ENV === "development" &&
-									window.location.hostname === "localhost"
-									? "If this address already belongs to a Google account, no email is sent—use Continue with Google above. For a new address, the API terminal has the verification link."
-									: "If this address already belongs to a Google account, no email is sent—use Continue with Google above. For a new address, check your inbox and spam folder for the verification email.",
+								window.location.hostname === "localhost";
+							setSuccessTitle(
+								isLocalDevelopment
+									? "Development verification"
+									: "Check your inbox",
+							);
+							setSuccessMessage(
+								isLocalDevelopment
+									? "This local build keeps verification links in the API terminal. In production, check your inbox. If you use Google for this address, continue with Google above."
+									: "Check your inbox and spam folder for a verification link. If you use Google for this address, continue with Google above.",
 							);
 							toast.success(
-								ENV.NODE_ENV === "development" &&
-									window.location.hostname === "localhost"
+								isLocalDevelopment
 									? "Use Google or check the API terminal"
-									: "Use Google or check your inbox",
+									: "Check your inbox or continue with Google",
 							);
 						},
 						onError: (error) => {
@@ -164,7 +172,7 @@ export default function SignUpForm({
 						aria-hidden="true"
 					/>
 					<div className="auth-form-card__success-body">
-						<strong>Next step</strong>
+						<strong>{successTitle}</strong>
 						<span>{successMessage}</span>
 					</div>
 				</div>
