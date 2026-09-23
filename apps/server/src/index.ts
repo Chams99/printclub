@@ -6,7 +6,9 @@ import { Elysia } from "elysia";
 import { createContext } from "./context";
 import { ENV } from "./env.server";
 import { getClientIp, parseTrustedProxyIps } from "./rate-limit";
+import { handleResendWebhook } from "./resend-webhook";
 import { auth, edgeRateLimitGuard } from "./services";
+import { verifyTurnstileForRequest } from "./turnstile";
 
 const maxRequestBodyBytes = 2 * 1024 * 1024;
 const port = Number(process.env.PORT ?? 3000);
@@ -62,13 +64,31 @@ new Elysia()
 		cors({
 			origin: ENV.CORS_ORIGIN,
 			methods: ["GET", "POST", "OPTIONS"],
-			allowedHeaders: ["Content-Type", "Authorization"],
+			allowedHeaders: [
+				"Content-Type",
+				"Authorization",
+				"X-Printclub-Turnstile",
+			],
 			credentials: true,
 		}),
 	)
+	.post("/webhooks/resend", ({ request }) => handleResendWebhook(request))
 	.all("/api/auth/*", async (context) => {
 		const { request, status } = context;
 		if (["POST", "GET"].includes(request.method)) {
+			const turnstile = await verifyTurnstileForRequest(request);
+			if (!turnstile.allowed) {
+				return new Response(
+					JSON.stringify({
+						code: "SECURITY_CHECK_REQUIRED",
+						message: "Complete the security check and try again.",
+					}),
+					{
+						status: 403,
+						headers: { "content-type": "application/json" },
+					},
+				);
+			}
 			return auth.handler(request);
 		}
 		return status(405);

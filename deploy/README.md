@@ -42,6 +42,24 @@ API key, verify the sending domain, and set `RESEND_API_KEY` plus a matching
 mail is also capped at one message per address every 5 minutes, five per
 address per day, and 80 messages globally per day.
 
+For bot protection, create a Cloudflare Turnstile widget for the production
+hostname and set both `VITE_TURNSTILE_SITE_KEY` (public, used during the web
+build) and `TURNSTILE_SECRET_KEY` (server-only). Set
+`TURNSTILE_EXPECTED_HOSTNAMES=printclub.chames.tn` so tokens issued for another
+site are rejected. If the keys are empty, the demo keeps the existing rate
+limits without requiring a challenge.
+
+To suppress addresses after permanent bounces, create a Resend webhook for
+`https://api.printclub.chames.tn/webhooks/resend`, subscribe to
+`email.bounced`, copy its `whsec_...` signing secret into
+`RESEND_WEBHOOK_SECRET`, and redeploy. The handler verifies the Svix signature,
+stores only a SHA-256 email hash, and blocks later verification messages for
+that address. It accepts no unsigned or stale webhook payloads.
+
+If a Traefik CSP is configured, allow the Turnstile origins in addition to the
+existing sources: `https://challenges.cloudflare.com` in `script-src`,
+`frame-src`, and `connect-src`.
+
 Deploy from the repository root:
 
 ```bash

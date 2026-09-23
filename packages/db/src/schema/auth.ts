@@ -96,6 +96,21 @@ export const rateLimit = pgTable("rate_limit", {
 	lastRequest: bigint("last_request", { mode: "number" }).notNull(),
 });
 
+/**
+ * Hashed addresses that must not receive another verification message after a
+ * permanent Resend bounce or complaint. Keeping only the normalized hash
+ * avoids retaining the bounced address in the abuse-control table.
+ */
+export const emailSuppression = pgTable("email_suppression", {
+	emailHash: text("email_hash").primaryKey(),
+	reason: text("reason").notNull(),
+	createdAt: timestamp("created_at").defaultNow().notNull(),
+	updatedAt: timestamp("updated_at")
+		.defaultNow()
+		.$onUpdate(() => /* @__PURE__ */ new Date())
+		.notNull(),
+});
+
 export const authRelations = defineRelationsPart({ user, session, account, verification }, (r) => ({
   user: {
     sessions: r.many.session({
