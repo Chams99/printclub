@@ -425,18 +425,6 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 			updatedAt: now,
 		};
 		setDraftIdState(savedDraft.id);
-		window.localStorage.setItem(
-			"printclub:guest-document:v1",
-			JSON.stringify(document),
-		);
-		window.localStorage.setItem(
-			"printclub:guest-assets:v1",
-			JSON.stringify(assets),
-		);
-		window.localStorage.setItem(
-			"printclub:guest-project-name:v1",
-			savedDraft.projectName,
-		);
 		await saveCreationDraft(savedDraft);
 		savedStateRef.current = JSON.stringify({
 			document,
