@@ -31,18 +31,28 @@ export default function UserMenu() {
 
 	return (
 		<DropdownMenu>
-			<DropdownMenuTrigger render={<Button variant="outline" />}>
+			<DropdownMenuTrigger
+				render={<Button variant="outline" className="user-menu__trigger" />}
+			>
 				{session.user.name}
 			</DropdownMenuTrigger>
-			<DropdownMenuContent className="bg-card">
+			<DropdownMenuContent className="user-menu__content" align="end">
 				<DropdownMenuGroup>
-					<DropdownMenuLabel>My Account</DropdownMenuLabel>
+					<DropdownMenuLabel className="user-menu__label">
+						My account
+					</DropdownMenuLabel>
+					<DropdownMenuLabel className="user-menu__email">
+						{session.user.email}
+					</DropdownMenuLabel>
 					<DropdownMenuSeparator />
-					<DropdownMenuItem>{session.user.email}</DropdownMenuItem>
-					<DropdownMenuItem render={<Link to="/account" />}>
+					<DropdownMenuItem
+						className="user-menu__item"
+						render={<Link to="/account" />}
+					>
 						Account settings
 					</DropdownMenuItem>
 					<DropdownMenuItem
+						className="user-menu__item"
 						variant="destructive"
 						onClick={() => {
 							authClient.signOut({
