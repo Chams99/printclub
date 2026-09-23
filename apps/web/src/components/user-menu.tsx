@@ -10,6 +10,7 @@ import {
 } from "@PhotoPrinting/ui/components/dropdown-menu";
 import { Skeleton } from "@PhotoPrinting/ui/components/skeleton";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { ChevronDown } from "lucide-react";
 
 import { authClient } from "@/lib/auth-client";
 
@@ -24,7 +25,9 @@ export default function UserMenu() {
 	if (!session) {
 		return (
 			<Link to="/login" search={{}}>
-				<Button variant="outline">Sign In</Button>
+				<Button variant="ghost" className="user-menu__trigger">
+					Sign in
+				</Button>
 			</Link>
 		);
 	}
@@ -34,7 +37,8 @@ export default function UserMenu() {
 			<DropdownMenuTrigger
 				render={<Button variant="outline" className="user-menu__trigger" />}
 			>
-				{session.user.name}
+				<span className="user-menu__name">{session.user.name}</span>
+				<ChevronDown aria-hidden="true" />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent className="user-menu__content" align="end">
 				<DropdownMenuGroup>
