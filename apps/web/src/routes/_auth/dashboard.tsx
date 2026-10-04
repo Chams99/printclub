@@ -10,15 +10,19 @@ import {
 	Sparkles,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-
+import { ActionNotice } from "@/components/action-notice";
+import WorkspaceNav from "@/components/workspace-nav";
+import { actionErrorMessage } from "@/lib/action-error";
 import {
 	type CreationDraft,
 	findResumableCreationDraft,
 	productImages,
 	templateDefinitions,
 } from "@/lib/creation-draft";
+import { responsiveImage } from "@/lib/images";
 
 export const Route = createFileRoute("/_auth/dashboard")({
+	head: () => ({ meta: [{ title: "Your workspace · printclub" }] }),
 	component: DashboardPage,
 });
 
@@ -27,26 +31,59 @@ function DashboardPage() {
 	const name = session.data?.user.name ?? "there";
 	const firstName = name.split(" ")[0] || "there";
 	const [draft, setDraft] = useState<CreationDraft | null>(null);
+	const [draftError, setDraftError] = useState<string>();
+	const [loading, setLoading] = useState(true);
+	const [attempt, setAttempt] = useState(0);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: attempt explicitly reruns the storage read after Retry.
 	useEffect(() => {
-		void findResumableCreationDraft().then(setDraft);
-	}, []);
+		let cancelled = false;
+		setLoading(true);
+		setDraftError(undefined);
+		void findResumableCreationDraft()
+			.then((next) => {
+				if (!cancelled) setDraft(next);
+			})
+			.catch((error: unknown) => {
+				if (!cancelled) setDraftError(actionErrorMessage(error, "load"));
+			})
+			.finally(() => {
+				if (!cancelled) setLoading(false);
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [attempt]);
 
 	const product = draft ? getProduct(draft.productId) : null;
+	// productImages is keyed by product kind, not product id.
+	const draftImage =
+		productImages[product?.kind ?? "classic-print"] ??
+		"/images/printclub-hero.webp";
 	const template = draft
 		? templateDefinitions.find((item) => item.id === draft.templateId)
 		: null;
-	const draftHref = draft
-		? `/studio?draft=${encodeURIComponent(draft.id)}`
-		: "/create";
 	return (
-		<main className="account-page dashboard-page" id="main-content">
-			<div className="account-shell dashboard-shell">
-				<nav className="dashboard-subnav" aria-label="Workspace navigation">
-					<span className="dashboard-subnav__current">Workspace</span>
-					<Link to="/orders">Requests</Link>
-					<Link to="/account">Account</Link>
-				</nav>
+		<main
+			className="account-page workspace-page dashboard-page"
+			id="main-content"
+		>
+			<div className="account-shell dashboard-shell enter-stagger">
+				<WorkspaceNav />
+				{draftError ? (
+					<ActionNotice
+						title="Browser designs could not be loaded"
+						message={draftError}
+					>
+						<button
+							className="button-v2 button-v2--ghost"
+							type="button"
+							onClick={() => setAttempt((value) => value + 1)}
+						>
+							Retry
+						</button>
+					</ActionNotice>
+				) : null}
 
 				<header className="dashboard-intro">
 					<div>
@@ -86,24 +123,37 @@ function DashboardPage() {
 								? `${draft.projectName} · ${product?.name ?? "Print"} · ${draft.assets.length} photo${draft.assets.length === 1 ? "" : "s"}`
 								: "Choose a format, add a photo, and shape something worth keeping in the studio."}
 						</p>
-						<a className="button-v2 button-v2--light" href={draftHref}>
-							{draft ? "Continue design" : "Start a new print"}
-							<ArrowRight aria-hidden="true" />
-						</a>
+						{loading ? (
+							<p role="status">Loading your browser designs…</p>
+						) : draftError ? (
+							<p>
+								Your saved designs are unavailable until the storage check
+								succeeds.
+							</p>
+						) : draft ? (
+							<Link
+								className="button-v2 button-v2--light"
+								to="/studio"
+								search={{ draft: draft.id }}
+							>
+								Continue design <ArrowRight aria-hidden="true" />
+							</Link>
+						) : (
+							<Link className="button-v2 button-v2--light" to="/create">
+								Start a new print <ArrowRight aria-hidden="true" />
+							</Link>
+						)}
 					</div>
 					<div className="dashboard-hero__visual" aria-hidden="true">
 						<div className="dashboard-print dashboard-print--back" />
 						<div className="dashboard-print dashboard-print--middle" />
 						<div className="dashboard-print dashboard-print--front">
 							<img
-								src={
-									draft
-										? productImages[draft.productId]
-										: "/images/printclub-hero.webp"
-								}
+								{...responsiveImage(
+									draftImage,
+									"(max-width: 760px) 136px, 192px",
+								)}
 								alt=""
-								width="480"
-								height="600"
 							/>
 							<span>{template?.label ?? "A print worth keeping"}</span>
 						</div>
@@ -122,15 +172,21 @@ function DashboardPage() {
 							</div>
 							<FolderOpen aria-hidden="true" />
 						</div>
-						{draft ? (
-							<a className="dashboard-draft" href={draftHref}>
+						{loading ? (
+							<p role="status">Loading your browser designs…</p>
+						) : draftError ? (
+							<p>
+								Your saved designs are unavailable until the storage check
+								succeeds.
+							</p>
+						) : draft ? (
+							<Link
+								className="dashboard-draft"
+								to="/studio"
+								search={{ draft: draft.id }}
+							>
 								<span className="dashboard-draft__thumb">
-									<img
-										src={productImages[draft.productId]}
-										alt=""
-										width="80"
-										height="96"
-									/>
+									<img {...responsiveImage(draftImage, "58px")} alt="" />
 								</span>
 								<span className="dashboard-draft__details">
 									<strong>{draft.projectName}</strong>
@@ -139,7 +195,7 @@ function DashboardPage() {
 									</small>
 								</span>
 								<ArrowUpRight aria-hidden="true" />
-							</a>
+							</Link>
 						) : (
 							<div className="dashboard-panel__empty">
 								<p>No designs here yet.</p>

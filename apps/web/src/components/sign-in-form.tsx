@@ -3,16 +3,16 @@ import { Input } from "@PhotoPrinting/ui/components/input";
 import { Label } from "@PhotoPrinting/ui/components/label";
 import { useForm } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, Loader2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import z from "zod";
 
 import { authClient } from "@/lib/auth-client";
 import {
-	getAuthErrorCode,
 	getAuthErrorMessage,
 	getFormErrorMessage,
+	isVerificationEmailFailure,
 } from "@/lib/form-error";
 import {
 	formatVerificationCooldown,
@@ -20,7 +20,7 @@ import {
 } from "@/lib/verification-resend";
 
 import GoogleSignInButton from "./google-sign-in-button";
-import Loader from "./loader";
+import PasswordInput from "./password-input";
 import { TurnstileChallenge, useTurnstile } from "./turnstile-challenge";
 
 export default function SignInForm({
@@ -33,7 +33,6 @@ export default function SignInForm({
 	const navigate = useNavigate({
 		from: "/",
 	});
-	const { isPending } = authClient.useSession();
 	const [formError, setFormError] = useState<string | null>(null);
 	const [verificationEmail, setVerificationEmail] = useState<string | null>(
 		null,
@@ -47,42 +46,67 @@ export default function SignInForm({
 	const [showValidationErrors, setShowValidationErrors] = useState(false);
 	const formErrorRef = useRef<HTMLDivElement>(null);
 	const turnstile = useTurnstile("sign-in");
+	const resendTurnstile = useTurnstile("send-verification-email");
+
+	function focusFormError() {
+		window.requestAnimationFrame(() => formErrorRef.current?.focus());
+	}
 
 	async function resendVerificationEmail() {
 		if (!verificationEmail || isCoolingDown) return;
-		if (turnstile.enabled && !turnstile.token) {
+		if (resendTurnstile.enabled && !resendTurnstile.token) {
 			setFormError(
-				turnstile.loadError
+				resendTurnstile.loadError
 					? "The security check could not load. Check your connection and try again."
 					: "Complete the security check before requesting another email.",
 			);
+			focusFormError();
 			return;
 		}
 		setIsResending(true);
 		setFormError(null);
-		const result = await authClient.sendVerificationEmail(
-			{
-				email: verificationEmail,
-				callbackURL: `${window.location.origin}${returnTo ?? "/dashboard"}`,
-			},
-			turnstile.token
-				? { headers: { "X-Printclub-Turnstile": turnstile.token } }
-				: undefined,
-		);
-		turnstile.reset();
-		setIsResending(false);
-		if (result.error) {
+		try {
+			const result = await authClient.sendVerificationEmail(
+				{
+					email: verificationEmail,
+					callbackURL: `${window.location.origin}${returnTo ?? "/dashboard"}`,
+				},
+				resendTurnstile.token
+					? {
+							headers: {
+								"X-Printclub-Turnstile": resendTurnstile.token,
+							},
+						}
+					: undefined,
+			);
+			if (result.error) {
+				const message = getAuthErrorMessage(
+					result,
+					"We couldn't resend the verification email. Try again in a moment.",
+				);
+				setFormError(message);
+				if (isVerificationEmailFailure(result)) startCooldown();
+				toast.error(message);
+				focusFormError();
+				return;
+			}
+			setFormError(null);
+			toast.success(
+				"Verification email sent. Check your inbox and spam folder.",
+			);
+		} catch (error) {
 			const message = getAuthErrorMessage(
-				result,
-				"We couldn't resend the verification email. Try again in a moment.",
+				error,
+				"We couldn't resend the verification email. Check your connection and try again.",
 			);
 			setFormError(message);
 			toast.error(message);
-			return;
+			focusFormError();
+		} finally {
+			startCooldown();
+			resendTurnstile.reset();
+			setIsResending(false);
 		}
-		setFormError(null);
-		startCooldown();
-		toast.success("Verification email sent. Check your inbox and spam folder.");
 	}
 
 	const form = useForm({
@@ -97,6 +121,7 @@ export default function SignInForm({
 						? "The security check could not load. Check your connection and try again."
 						: "Complete the security check before signing in.",
 				);
+				focusFormError();
 				return;
 			}
 			try {
@@ -120,8 +145,9 @@ export default function SignInForm({
 							toast.success("Sign in successful");
 						},
 						onError: (error) => {
-							if (getAuthErrorCode(error) === "EMAIL_NOT_VERIFIED") {
+							if (isVerificationEmailFailure(error)) {
 								setVerificationEmail(value.email.trim());
+								startCooldown();
 							}
 							const message = getAuthErrorMessage(
 								error,
@@ -129,7 +155,7 @@ export default function SignInForm({
 							);
 							setFormError(message);
 							toast.error(message);
-							window.requestAnimationFrame(() => formErrorRef.current?.focus());
+							focusFormError();
 						},
 					},
 				);
@@ -142,7 +168,7 @@ export default function SignInForm({
 				);
 				setFormError(message);
 				toast.error(message);
-				window.requestAnimationFrame(() => formErrorRef.current?.focus());
+				focusFormError();
 			}
 		},
 		validators: {
@@ -182,10 +208,6 @@ export default function SignInForm({
 		return false;
 	}
 
-	if (isPending) {
-		return <Loader />;
-	}
-
 	return (
 		<div className="auth-form-card">
 			<div className="auth-form-card__heading">
@@ -203,28 +225,37 @@ export default function SignInForm({
 				>
 					<CircleAlert aria-hidden="true" />
 					<span>{formError}</span>
-					{verificationEmail ? (
-						<Button
-							type="button"
-							variant="link"
-							className="auth-form-card__alert-action"
-							disabled={isResending || isCoolingDown}
-							onClick={() => void resendVerificationEmail()}
-						>
-							{isResending
-								? "Sending…"
-								: isCoolingDown
-									? `Resend in ${formatVerificationCooldown(secondsRemaining)}`
-									: "Resend verification"}
-						</Button>
+				</div>
+			) : null}
+			{verificationEmail ? (
+				<div className="auth-form-card__verification-resend">
+					<p>
+						{isCoolingDown
+							? "A verification email was just requested. Check your inbox and spam folder; you can request another after the cooldown."
+							: "Need a fresh verification link? Complete this check, then resend."}
+					</p>
+					{!isCoolingDown ? (
+						<TurnstileChallenge challenge={resendTurnstile} />
 					) : null}
+					<Button
+						type="button"
+						variant="outline"
+						disabled={isResending || isCoolingDown}
+						onClick={() => void resendVerificationEmail()}
+					>
+						{isResending
+							? "Sending…"
+							: isCoolingDown
+								? `Resend in ${formatVerificationCooldown(secondsRemaining)}`
+								: "Resend verification email"}
+					</Button>
 				</div>
 			) : null}
 			<GoogleSignInButton
 				returnTo={returnTo}
 				onError={(message) => {
 					setFormError(message);
-					window.requestAnimationFrame(() => formErrorRef.current?.focus());
+					focusFormError();
 				}}
 			/>
 
@@ -238,11 +269,7 @@ export default function SignInForm({
 				className="auth-form-card__fields"
 			>
 				<div
-					className={
-						showValidationErrors
-							? "auth-form-card__field-wrap has-error"
-							: "auth-form-card__field-wrap"
-					}
+					className={`auth-form-card__field-wrap${fieldErrors.email ? " has-error" : ""}`}
 				>
 					<form.Field
 						name="email"
@@ -275,13 +302,16 @@ export default function SignInForm({
 									onBlur={field.handleBlur}
 									onChange={(e) => {
 										field.handleChange(e.target.value);
+										setFormError(null);
+										setVerificationEmail(null);
 										setFieldErrors((current) => ({
 											...current,
 											email: undefined,
 										}));
 									}}
 								/>
-								{!showValidationErrors && field.state.meta.errors.length ? (
+								{fieldErrors.email ||
+								(!showValidationErrors && field.state.meta.errors.length) ? (
 									<p
 										id={`${field.name}-error`}
 										className="auth-form-card__error"
@@ -297,24 +327,10 @@ export default function SignInForm({
 							</div>
 						)}
 					</form.Field>
-					{showValidationErrors ? (
-						<p
-							id="email-error"
-							className="auth-form-card__error"
-							aria-live="polite"
-						>
-							<CircleAlert aria-hidden="true" />
-							<span>Enter a valid email address.</span>
-						</p>
-					) : null}
 				</div>
 
 				<div
-					className={
-						showValidationErrors
-							? "auth-form-card__field-wrap has-error"
-							: "auth-form-card__field-wrap"
-					}
+					className={`auth-form-card__field-wrap${fieldErrors.password ? " has-error" : ""}`}
 				>
 					<form.Field
 						name="password"
@@ -329,10 +345,9 @@ export default function SignInForm({
 								}
 							>
 								<Label htmlFor={field.name}>Password</Label>
-								<Input
+								<PasswordInput
 									id={field.name}
 									name={field.name}
-									type="password"
 									autoComplete="current-password"
 									aria-invalid={Boolean(
 										fieldErrors.password || field.state.meta.errors.length,
@@ -346,13 +361,15 @@ export default function SignInForm({
 									onBlur={field.handleBlur}
 									onChange={(e) => {
 										field.handleChange(e.target.value);
+										setFormError(null);
 										setFieldErrors((current) => ({
 											...current,
 											password: undefined,
 										}));
 									}}
 								/>
-								{!showValidationErrors && field.state.meta.errors.length ? (
+								{fieldErrors.password ||
+								(!showValidationErrors && field.state.meta.errors.length) ? (
 									<p
 										id={`${field.name}-error`}
 										className="auth-form-card__error"
@@ -368,16 +385,6 @@ export default function SignInForm({
 							</div>
 						)}
 					</form.Field>
-					{showValidationErrors ? (
-						<p
-							id="password-error"
-							className="auth-form-card__error"
-							aria-live="polite"
-						>
-							<CircleAlert aria-hidden="true" />
-							<span>Password must be at least 8 characters.</span>
-						</p>
-					) : null}
 				</div>
 
 				<TurnstileChallenge challenge={turnstile} />
@@ -401,7 +408,14 @@ export default function SignInForm({
 								}
 							}}
 						>
-							{isSubmitting ? "Submitting…" : "Sign In"}
+							{isSubmitting ? (
+								<>
+									<Loader2 className="button-spinner" aria-hidden="true" />
+									Signing in…
+								</>
+							) : (
+								"Sign in"
+							)}
 						</button>
 					)}
 				</form.Subscribe>
@@ -413,7 +427,7 @@ export default function SignInForm({
 					onClick={onSwitchToSignUp}
 					className="auth-form-card__switch-button"
 				>
-					Need an account? Sign Up
+					Need an account? Sign up
 				</Button>
 			</div>
 		</div>

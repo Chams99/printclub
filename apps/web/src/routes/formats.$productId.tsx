@@ -1,6 +1,8 @@
 import { getProduct } from "@PhotoPrinting/api/domain/print";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowUpRight, Check } from "lucide-react";
+
+import { responsiveImage } from "@/lib/images";
 
 export const Route = createFileRoute("/formats/$productId")({
 	head: () => ({
@@ -26,20 +28,23 @@ const productImages: Record<string, string> = {
 function ProductPage() {
 	const { productId } = Route.useParams();
 	const product = getProduct(productId);
+	const heroImage =
+		productImages[product?.kind ?? "classic-print"] ??
+		productImages["classic-print"];
 	if (!product) {
 		return (
 			<main className="product-page" id="main-content">
 				<section className="product-hero-v2">
-					<div className="product-hero-v2__copy">
+					<div className="product-hero-v2__copy enter-stagger">
 						<p className="eyebrow eyebrow--blue">Format not found</p>
 						<h1>Let’s find the right shape.</h1>
 						<p>
 							That format is not in the current demo catalog. Browse the
 							available print formats and choose a new starting point.
 						</p>
-							<a className="button-v2 button-v2--primary" href="/formats">
+						<Link className="button-v2 button-v2--primary" to="/formats">
 							Explore formats <ArrowUpRight aria-hidden="true" />
-						</a>
+						</Link>
 					</div>
 				</section>
 			</main>
@@ -49,7 +54,7 @@ function ProductPage() {
 	return (
 		<main className="product-page" id="main-content">
 			<section className="product-hero-v2">
-				<div className="product-hero-v2__copy">
+				<div className="product-hero-v2__copy enter-stagger">
 					<p className="eyebrow eyebrow--blue">
 						{product.kind.replaceAll("-", " ")}
 					</p>
@@ -60,15 +65,16 @@ function ProductPage() {
 					</h1>
 					<p>{product.description}</p>
 					<div className="product-hero-v2__actions">
-						<a
+						<Link
 							className="button-v2 button-v2--primary"
-							href={`/create?product=${product.id}`}
+							to="/create"
+							search={{ product: product.id }}
 						>
 							Start this format <ArrowUpRight aria-hidden="true" />
-						</a>
-						<a className="button-v2 button-v2--ghost" href="/formats">
+						</Link>
+						<Link className="button-v2 button-v2--ghost" to="/formats">
 							See all formats
-						</a>
+						</Link>
 					</div>
 					<ul className="hero-v2__trust">
 						<li>
@@ -83,10 +89,12 @@ function ProductPage() {
 				</div>
 				<div className="product-hero-v2__media">
 					<img
-						src={productImages[product.kind] ?? productImages["classic-print"]}
 						alt={`${product.name} preview with an original printclub photograph`}
-						width="1536"
-						height="1024"
+						{...responsiveImage(
+							heroImage,
+							"(max-width: 900px) calc(100vw - 2rem), 448px",
+						)}
+						fetchPriority="high"
 					/>
 				</div>
 			</section>

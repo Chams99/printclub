@@ -1,3 +1,5 @@
+import { Button } from "@PhotoPrinting/ui/components/button";
+import { Loader2, RotateCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -73,27 +75,53 @@ function loadGoogleIdentityServices() {
 	if (window.google?.accounts.id) return Promise.resolve();
 	if (googleScriptPromise) return googleScriptPromise;
 
-	const script = document.createElement("script");
-	script.src = "https://accounts.google.com/gsi/client?hl=en";
-	script.async = true;
-	script.defer = true;
-	script.dataset.printclubGoogleIdentity = "true";
-
-	googleScriptPromise = new Promise<void>((resolve, reject) => {
-		script.addEventListener("load", () => {
-			if (window.google?.accounts.id) resolve();
-			else reject(new Error("Google Identity Services did not load."));
-		});
-		script.addEventListener("error", () =>
-			reject(new Error("Google Identity Services could not load.")),
+	const existing = document.querySelector<HTMLScriptElement>(
+		"script[data-printclub-google-identity]",
+	);
+	const script = existing ?? document.createElement("script");
+	let pending: Promise<void>;
+	pending = new Promise<void>((resolve, reject) => {
+		let settled = false;
+		const cleanup = () => {
+			window.clearTimeout(timeout);
+			script.removeEventListener("load", onLoad);
+			script.removeEventListener("error", onError);
+		};
+		const fail = (message: string) => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			if (script.dataset.printclubGoogleIdentity === "true") script.remove();
+			if (googleScriptPromise === pending) googleScriptPromise = null;
+			reject(new Error(message));
+		};
+		const onLoad = () => {
+			if (window.google?.accounts.id) {
+				if (settled) return;
+				settled = true;
+				cleanup();
+				resolve();
+				return;
+			}
+			fail("Google Identity Services did not initialize.");
+		};
+		const onError = () => fail("Google Identity Services could not load.");
+		const timeout = window.setTimeout(
+			() => fail("Google Identity Services timed out."),
+			15_000,
 		);
-		document.head.appendChild(script);
-	}).catch((error) => {
-		googleScriptPromise = null;
-		throw error;
+		script.addEventListener("load", onLoad, { once: true });
+		script.addEventListener("error", onError, { once: true });
+		if (!existing) {
+			script.src = "https://accounts.google.com/gsi/client?hl=en";
+			script.async = true;
+			script.defer = true;
+			script.dataset.printclubGoogleIdentity = "true";
+			document.head.appendChild(script);
+		}
 	});
-
-	return googleScriptPromise;
+	googleScriptPromise = pending;
+	return pending;
 }
 
 export default function GoogleSignInButton({
@@ -117,6 +145,8 @@ export default function GoogleSignInButton({
 	const onSuccessRef = useRef(onSuccess);
 	const [isPending, setIsPending] = useState(false);
 	const [isLoading, setIsLoading] = useState(googleSignInEnabled);
+	const [loadError, setLoadError] = useState(false);
+	const [loadAttempt, setLoadAttempt] = useState(0);
 
 	useEffect(() => {
 		onErrorRef.current = onError;
@@ -127,17 +157,17 @@ export default function GoogleSignInButton({
 
 	useEffect(() => {
 		if (!googleSignInEnabled || !ENV.VITE_GOOGLE_CLIENT_ID) return;
+		if (loadAttempt > 0) {
+			setLoadError(false);
+			setIsLoading(true);
+		}
 		let disposed = false;
 		let resizeObserver: ResizeObserver | null = null;
 
-		const showError = (error: unknown) => {
+		const showError = () => {
 			if (disposed) return;
 			setIsLoading(false);
-			const message = getAuthErrorMessage(
-				error,
-				"Google sign-in is unavailable right now. You can use email instead.",
-			);
-			onErrorRef.current?.(message);
+			setLoadError(true);
 		};
 
 		const handleCredential = async ({
@@ -158,14 +188,17 @@ export default function GoogleSignInButton({
 								idToken: { token: credential },
 							});
 				if (response.error) {
-					throw new Error(
-						getAuthErrorMessage(
-							{ error: response.error },
-							intentRef.current === "link"
-								? "Google account linking failed."
-								: "Google sign-in failed.",
-						),
+					const message = getAuthErrorMessage(
+						{ error: response.error },
+						intentRef.current === "link"
+							? "Google account linking failed."
+							: "Google sign-in failed.",
 					);
+					onErrorRef.current?.(message);
+					toast.error(message);
+					pendingRef.current = false;
+					setIsPending(false);
+					return;
 				}
 				if (intentRef.current === "link") {
 					onSuccessRef.current?.();
@@ -230,7 +263,13 @@ export default function GoogleSignInButton({
 			resizeObserver?.disconnect();
 			buttonRef.current?.replaceChildren();
 		};
-	}, []);
+	}, [loadAttempt]);
+
+	function retryGoogleSignIn() {
+		setLoadError(false);
+		setIsLoading(true);
+		setLoadAttempt((attempt) => attempt + 1);
+	}
 
 	if (!googleSignInEnabled) return null;
 
@@ -238,8 +277,24 @@ export default function GoogleSignInButton({
 		<>
 			<div className="auth-google-button" aria-busy={isLoading || isPending}>
 				<div ref={buttonRef} className="auth-google-button__mount" />
-				{isLoading ? (
+				{loadError ? (
+					<div className="auth-google-button__unavailable" role="alert">
+						<span>
+							Google sign-in couldn’t load. Check your connection and retry.
+						</span>
+						<Button
+							type="button"
+							variant="outline"
+							size="lg"
+							onClick={retryGoogleSignIn}
+						>
+							<RotateCw aria-hidden="true" />
+							Retry Google sign-in
+						</Button>
+					</div>
+				) : isLoading ? (
 					<span className="auth-google-button__status">
+						<Loader2 className="button-spinner" aria-hidden="true" />
 						Loading Google sign-in…
 					</span>
 				) : null}

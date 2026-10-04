@@ -2,7 +2,9 @@ import { catalog } from "@PhotoPrinting/api/domain/print";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowUpRight, Check } from "lucide-react";
 
-export const Route = createFileRoute("/formats")({
+import { responsiveImage } from "@/lib/images";
+
+export const Route = createFileRoute("/formats/")({
 	head: () => ({
 		meta: [
 			{ title: "Formats · printclub" },
@@ -27,7 +29,7 @@ const productImages: Record<string, string> = {
 function FormatsPage() {
 	return (
 		<main className="formats-index-page" id="main-content">
-			<section className="formats-index-v2">
+			<section className="formats-index-v2 enter-stagger">
 				<p className="eyebrow eyebrow--blue">Choose your shape</p>
 				<h1>
 					Five ways to keep
@@ -40,15 +42,21 @@ function FormatsPage() {
 				</p>
 				<div className="formats-index-grid-v2">
 					{catalog.map((product) => (
-						<article className="format-index-card-v2" key={product.id}>
+						<article
+							className="format-index-card-v2 reveal-on-scroll"
+							key={product.id}
+						>
 							<div
 								className={`format-index-card-v2__media format-index-card-v2__media--${product.kind}`}
 							>
 								<img
-									src={productImages[product.kind]}
+									{...responsiveImage(
+										productImages[product.kind],
+										"(max-width: 760px) calc(100vw - 2rem), (max-width: 900px) 50vw, 240px",
+									)}
 									alt={`${product.name} preview`}
-									width="1536"
-									height="1024"
+									loading="lazy"
+									decoding="async"
 								/>
 							</div>
 							<div className="format-index-card-v2__body">

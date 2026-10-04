@@ -74,6 +74,47 @@ const legacyDocumentKey = "printclub:guest-document:v1";
 const legacyAssetsKey = "printclub:guest-assets:v1";
 const legacyProjectNameKey = "printclub:guest-project-name:v1";
 
+export function validateCreationDraft(value: unknown): CreationDraft {
+	if (!value || typeof value !== "object")
+		throw new Error(
+			"The saved design is damaged. Your original data has been kept; try another saved design.",
+		);
+	const draft = value as CreationDraft;
+	const parsed = designDocumentSchema.safeParse(draft.document);
+	if (
+		draft.version !== 1 ||
+		typeof draft.id !== "string" ||
+		!parsed.success ||
+		!getProduct(draft.productId) ||
+		parsed.data.productId !== draft.productId ||
+		!["blank", "caption", "gallery", "celebration"].includes(
+			draft.templateId,
+		) ||
+		typeof draft.projectName !== "string" ||
+		![1, 2, 3].includes(draft.step) ||
+		typeof draft.started !== "boolean" ||
+		!Array.isArray(draft.assets) ||
+		draft.assets.some(
+			(asset) =>
+				!asset ||
+				typeof asset.id !== "string" ||
+				typeof asset.name !== "string" ||
+				typeof asset.dataUrl !== "string" ||
+				!Number.isFinite(asset.width) ||
+				asset.width <= 0 ||
+				!Number.isFinite(asset.height) ||
+				asset.height <= 0,
+		) ||
+		!Number.isFinite(Date.parse(draft.createdAt)) ||
+		!Number.isFinite(Date.parse(draft.updatedAt))
+	) {
+		throw new Error(
+			"The saved design is damaged or uses an unsupported version. Your original data has been kept; try another saved design.",
+		);
+	}
+	return { ...draft, document: parsed.data };
+}
+
 function openDraftDatabase(): Promise<IDBDatabase> {
 	if (typeof indexedDB === "undefined") {
 		return Promise.reject(new Error("IndexedDB is unavailable."));
@@ -88,6 +129,12 @@ function openDraftDatabase(): Promise<IDBDatabase> {
 		request.onsuccess = () => resolve(request.result);
 		request.onerror = () =>
 			reject(request.error ?? new Error("Could not open drafts."));
+		request.onblocked = () =>
+			reject(
+				new Error(
+					"Close other printclub tabs and retry opening your saved design.",
+				),
+			);
 	});
 }
 
@@ -108,33 +155,41 @@ function transactDraft(
 					database.close();
 					reject(transaction.error ?? new Error("Could not save draft."));
 				};
+				transaction.onabort = () => {
+					database.close();
+					reject(
+						transaction.error ??
+							new Error(
+								"Saving was interrupted. Keep this tab open and retry.",
+							),
+					);
+				};
 			}),
 	);
 }
 
 async function readDraft(id: string): Promise<CreationDraft | null> {
-	try {
-		const database = await openDraftDatabase();
-		return await new Promise((resolve, reject) => {
-			const request = database
-				.transaction(storeName, "readonly")
-				.objectStore(storeName)
-				.get(id);
-			request.onsuccess = () => {
-				database.close();
-				const value = request.result as unknown;
-				if (!value || typeof value !== "object") return resolve(null);
-				const parsed = value as CreationDraft;
-				resolve(parsed.version === 1 ? parsed : null);
-			};
-			request.onerror = () => {
-				database.close();
-				reject(request.error ?? new Error("Could not read draft."));
-			};
-		});
-	} catch {
-		return null;
-	}
+	const database = await openDraftDatabase();
+	return await new Promise((resolve, reject) => {
+		const request = database
+			.transaction(storeName, "readonly")
+			.objectStore(storeName)
+			.get(id);
+		request.onsuccess = () => {
+			database.close();
+			const value = request.result as unknown;
+			if (!value) return resolve(null);
+			try {
+				resolve(validateCreationDraft(value));
+			} catch (error) {
+				reject(error);
+			}
+		};
+		request.onerror = () => {
+			database.close();
+			reject(request.error ?? new Error("Could not read draft."));
+		};
+	});
 }
 
 export async function loadCreationDraft(
@@ -143,7 +198,8 @@ export async function loadCreationDraft(
 	const draftId =
 		id ?? window.localStorage.getItem(currentDraftKey) ?? undefined;
 	if (!draftId) return migrateLegacyDraft();
-	return (await readDraft(draftId)) ?? migrateLegacyDraft();
+	const draft = await getCreationDraft(draftId);
+	return id ? draft : (draft ?? migrateLegacyDraft());
 }
 
 /** Return the last browser draft without making it the active setup draft. */
@@ -157,20 +213,27 @@ export async function findResumableCreationDraft(): Promise<CreationDraft | null
 }
 
 export async function saveCreationDraft(draft: CreationDraft): Promise<void> {
-	const next = { ...draft, updatedAt: new Date().toISOString() };
+	const next = validateCreationDraft({
+		...draft,
+		updatedAt: new Date().toISOString(),
+	});
 	try {
 		await transactDraft(next, "readwrite");
-		window.localStorage.setItem(currentDraftKey, next.id);
-	} catch {
 		try {
 			window.localStorage.setItem(currentDraftKey, next.id);
+		} catch {
+			/* A direct draft URL can still recover the successful IndexedDB write. */
+		}
+	} catch {
+		try {
 			window.localStorage.setItem(
 				`printclub:draft-fallback:${next.id}`,
 				JSON.stringify(next),
 			);
+			window.localStorage.setItem(currentDraftKey, next.id);
 		} catch {
 			throw new Error(
-				"Browser storage is full. Remove old printclub site data and try saving again.",
+				"Your changes could not be saved. Keep this tab open and download a preview before changing browser storage settings.",
 			);
 		}
 	}
@@ -179,16 +242,21 @@ export async function saveCreationDraft(draft: CreationDraft): Promise<void> {
 export async function getCreationDraft(
 	id: string,
 ): Promise<CreationDraft | null> {
-	const draft = await readDraft(id);
-	if (draft) return draft;
+	let readError: unknown;
 	try {
-		const fallback = JSON.parse(
-			window.localStorage.getItem(`printclub:draft-fallback:${id}`) ?? "null",
-		) as CreationDraft | null;
-		return fallback?.version === 1 ? fallback : null;
-	} catch {
-		return null;
+		const draft = await readDraft(id);
+		if (draft) return draft;
+	} catch (error) {
+		readError = error;
 	}
+	try {
+		const raw = window.localStorage.getItem(`printclub:draft-fallback:${id}`);
+		if (raw) return validateCreationDraft(JSON.parse(raw));
+	} catch (error) {
+		readError ??= error;
+	}
+	if (readError) throw readError;
+	return null;
 }
 
 export async function createCreationDraft(
@@ -464,6 +532,22 @@ export async function createAssetFromFile(file: File): Promise<StoredAsset> {
 	if (file.size > 8 * 1024 * 1024) {
 		throw new Error("Images must be smaller than 8 MB in guest mode.");
 	}
+	if (file.size === 0)
+		throw new Error("This image is empty. Choose another photo.");
+	const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+	const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+	const png =
+		bytes.length >= 8 &&
+		[137, 80, 78, 71, 13, 10, 26, 10].every(
+			(value, index) => bytes[index] === value,
+		);
+	const webp =
+		String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
+		String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
+	if (!jpeg && !png && !webp)
+		throw new Error(
+			"This image is not a valid JPEG, PNG, or WebP. Choose another photo.",
+		);
 	const dataUrl = await new Promise<string>((resolve, reject) => {
 		const reader = new FileReader();
 		reader.onload = () => resolve(String(reader.result));
@@ -471,14 +555,36 @@ export async function createAssetFromFile(file: File): Promise<StoredAsset> {
 		reader.readAsDataURL(file);
 	});
 	const image = new Image();
-	image.src = dataUrl;
-	await new Promise<void>((resolve) => {
-		image.onload = () => resolve();
-		image.onerror = () => resolve();
+	await new Promise<void>((resolve, reject) => {
+		const timer = window.setTimeout(() => {
+			image.src = "";
+			reject(
+				new Error("This image took too long to open. Try a smaller photo."),
+			);
+		}, 15_000);
+		image.onload = () => {
+			window.clearTimeout(timer);
+			resolve();
+		};
+		image.onerror = () => {
+			window.clearTimeout(timer);
+			reject(
+				new Error("This image could not be decoded. Choose another photo."),
+			);
+		};
+		image.src = dataUrl;
 	});
 	if (!image.naturalWidth || !image.naturalHeight) {
 		throw new Error("This image could not be decoded.");
 	}
+	if (
+		image.naturalWidth * image.naturalHeight > 40_000_000 ||
+		image.naturalWidth > 12_000 ||
+		image.naturalHeight > 12_000
+	)
+		throw new Error(
+			"This image is too large to edit safely. Resize it to under 40 megapixels and 12,000 pixels per side, then retry.",
+		);
 	return {
 		id: crypto.randomUUID(),
 		name: file.name,
@@ -532,26 +638,33 @@ export function readLegacyGuestDesign(): {
 	assets: StoredAsset[];
 	projectName: string;
 } | null {
-	try {
-		const savedDocument = JSON.parse(
-			window.localStorage.getItem(legacyDocumentKey) ?? "null",
-		);
-		const savedAssets = JSON.parse(
-			window.localStorage.getItem(legacyAssetsKey) ?? "[]",
-		);
-		const parsed = designDocumentSchema.safeParse(savedDocument);
-		if (!parsed.success || !Array.isArray(savedAssets)) return null;
-		return {
-			document: parsed.data,
-			assets: savedAssets as StoredAsset[],
-			projectName:
-				window.localStorage.getItem(legacyProjectNameKey) ?? "Untitled memory",
-		};
-	} catch {
-		return null;
-	}
+	const raw = window.localStorage.getItem(legacyDocumentKey);
+	if (!raw) return null;
+	const savedDocument: unknown = JSON.parse(raw);
+	const savedAssets: unknown = JSON.parse(
+		window.localStorage.getItem(legacyAssetsKey) ?? "[]",
+	);
+	const now = new Date().toISOString();
+	const draft = validateCreationDraft({
+		version: 1,
+		id: "legacy",
+		document: savedDocument,
+		assets: savedAssets,
+		productId: (savedDocument as DesignDocument | null)?.productId,
+		projectName:
+			window.localStorage.getItem(legacyProjectNameKey) ?? "Untitled memory",
+		templateId: "blank",
+		step: 3,
+		started: true,
+		createdAt: now,
+		updatedAt: now,
+	});
+	return {
+		document: draft.document,
+		assets: draft.assets,
+		projectName: draft.projectName,
+	};
 }
-
 async function migrateLegacyDraft(): Promise<CreationDraft | null> {
 	const legacy = readLegacyGuestDesign();
 	if (!legacy) return null;
