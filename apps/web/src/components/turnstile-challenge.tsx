@@ -1,3 +1,4 @@
+import { Button } from "@PhotoPrinting/ui/components/button";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ENV } from "@/runtime-env";
@@ -12,6 +13,8 @@ type TurnstileApi = {
 			"expired-callback": () => void;
 			"error-callback": () => void;
 			theme: "light";
+			size: "flexible";
+			appearance: "always";
 		},
 	) => string | number;
 	reset: (widgetId?: string | number) => void;
@@ -30,16 +33,34 @@ function loadTurnstile() {
 	if (window.turnstile) return Promise.resolve(window.turnstile);
 	if (scriptPromise) return scriptPromise;
 
-	scriptPromise = new Promise<TurnstileApi>((resolve, reject) => {
+	const promise = new Promise<TurnstileApi>((resolve, reject) => {
 		const existing = document.querySelector<HTMLScriptElement>(
 			"script[data-printclub-turnstile]",
 		);
 		const script = existing ?? document.createElement("script");
-		const onLoad = () => {
-			if (window.turnstile) resolve(window.turnstile);
-			else reject(new Error("Turnstile did not initialize"));
+		let settled = false;
+		const timeout = window.setTimeout(() => fail(), 15_000);
+		const cleanup = () => {
+			window.clearTimeout(timeout);
+			script.removeEventListener("load", onLoad);
+			script.removeEventListener("error", onError);
 		};
-		const onError = () => reject(new Error("Turnstile could not load"));
+		const fail = () => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			if (script.dataset.printclubTurnstile === "true") script.remove();
+			if (scriptPromise === promise) scriptPromise = null;
+			reject(new Error("Turnstile could not load"));
+		};
+		const onLoad = () => {
+			if (settled) return;
+			if (!window.turnstile) return fail();
+			settled = true;
+			cleanup();
+			resolve(window.turnstile);
+		};
+		const onError = () => fail();
 		script.addEventListener("load", onLoad, { once: true });
 		script.addEventListener("error", onError, { once: true });
 		if (!existing) {
@@ -51,33 +72,48 @@ function loadTurnstile() {
 			document.head.appendChild(script);
 		}
 	});
-	return scriptPromise;
+	scriptPromise = promise;
+	return promise;
 }
 
 export function useTurnstile(action: string) {
 	const siteKey = ENV.VITE_TURNSTILE_SITE_KEY?.trim() ?? "";
-	const containerRef = useRef<HTMLDivElement>(null);
+	const [container, setContainer] = useState<HTMLDivElement | null>(null);
 	const widgetRef = useRef<string | number | null>(null);
 	const [token, setToken] = useState<string | null>(null);
 	const [ready, setReady] = useState(false);
 	const [loadError, setLoadError] = useState(false);
+	const [expired, setExpired] = useState(false);
+	const [attempt, setAttempt] = useState(0);
+	const containerRef = useCallback((node: HTMLDivElement | null) => {
+		setContainer(node);
+	}, []);
 
 	useEffect(() => {
-		if (!siteKey || !containerRef.current) return;
+		if (!siteKey || !container) return;
 		let disposed = false;
 		void loadTurnstile()
 			.then((turnstile) => {
-				if (disposed || !containerRef.current) return;
-				widgetRef.current = turnstile.render(containerRef.current, {
+				if (disposed) return;
+				widgetRef.current = turnstile.render(container, {
 					sitekey: siteKey,
 					action,
-					callback: (nextToken) => setToken(nextToken),
-					"expired-callback": () => setToken(null),
+					callback: (nextToken) => {
+						setToken(nextToken);
+						setExpired(false);
+						setLoadError(false);
+					},
+					"expired-callback": () => {
+						setToken(null);
+						setExpired(true);
+					},
 					"error-callback": () => {
 						setToken(null);
 						setLoadError(true);
 					},
 					theme: "light",
+					size: "flexible",
+					appearance: "always",
 				});
 				setReady(true);
 			})
@@ -92,20 +128,30 @@ export function useTurnstile(action: string) {
 			}
 			widgetRef.current = null;
 		};
-	}, [action, siteKey]);
+	}, [action, container, siteKey]);
 
 	const reset = useCallback(() => {
 		setToken(null);
 		if (widgetRef.current !== null) window.turnstile?.reset(widgetRef.current);
+	}, []);
+	const retry = useCallback(() => {
+		setToken(null);
+		setReady(false);
+		setLoadError(false);
+		setExpired(false);
+		setAttempt((current) => current + 1);
 	}, []);
 
 	return {
 		enabled: Boolean(siteKey),
 		ready,
 		loadError,
+		expired,
 		token,
 		containerRef,
+		attempt,
 		reset,
+		retry,
 	};
 }
 
@@ -118,15 +164,34 @@ export function TurnstileChallenge({
 }) {
 	if (!challenge.enabled) return null;
 	return (
-		<div className="turnstile-challenge" aria-live="polite">
-			<div ref={challenge.containerRef} />
+		<div className="turnstile-challenge">
+			<div key={challenge.attempt} ref={challenge.containerRef} />
 			{challenge.loadError ? (
-				<p className="turnstile-challenge__message">
-					The security check could not load. Check your connection and try
-					again.
-				</p>
+				<div className="turnstile-challenge__status" role="status">
+					<p className="turnstile-challenge__message">
+						The security check didn’t load. Check your connection, then retry.
+					</p>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						onClick={challenge.retry}
+					>
+						Retry security check
+					</Button>
+				</div>
 			) : !challenge.ready ? (
-				<p className="turnstile-challenge__message">Loading security check…</p>
+				<p className="turnstile-challenge__message" role="status">
+					Loading security check…
+				</p>
+			) : challenge.token ? (
+				<p className="turnstile-challenge__message" role="status">
+					Security check complete.
+				</p>
+			) : challenge.expired ? (
+				<p className="turnstile-challenge__message" role="status">
+					The security check expired. Complete it again to continue.
+				</p>
 			) : null}
 		</div>
 	);

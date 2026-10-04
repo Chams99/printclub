@@ -1,7 +1,9 @@
 import {
 	type DesignDocument,
 	type DesignElement,
+	designDocumentSchema,
 	getProduct,
+	orderRequestSchema,
 } from "@PhotoPrinting/api/domain/print";
 import { Button } from "@PhotoPrinting/ui/components/button";
 import { useMutation } from "@tanstack/react-query";
@@ -13,19 +15,33 @@ import {
 	Copy,
 	Download,
 	ImagePlus,
+	Images,
+	Layers,
+	LayoutTemplate,
 	Link2,
+	Loader2,
+	MousePointerClick,
 	MoveDiagonal2,
 	Redo2,
 	RotateCw,
 	Save,
 	Send,
+	Shapes,
 	Trash2,
 	Type,
 	Undo2,
+	X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useEffectEvent,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 
-import { authClient } from "@/lib/auth-client";
+import { actionErrorMessage } from "@/lib/action-error";
 import {
 	addAssetToDocument,
 	applyTemplateToDocument,
@@ -41,7 +57,26 @@ import {
 	type TemplateId,
 	templateCompositionVersion,
 } from "@/lib/creation-draft";
+import { rememberDemoOrder } from "@/lib/demo-orders";
+import {
+	createDesignExport,
+	type ExportFormat,
+	type ExportStage,
+	getDesignExportErrorMessage,
+} from "@/lib/design-export";
+import { useAuthSession } from "@/lib/use-auth-session";
 import { useTRPC } from "@/utils/trpc";
+import { ActionNotice } from "./action-notice";
+import ExportPreviewDialog from "./export-preview-dialog";
+import ModalDialog from "./modal-dialog";
+
+const studioTools = [
+	{ id: "templates", label: "Templates", icon: LayoutTemplate },
+	{ id: "photos", label: "Photos", icon: Images },
+	{ id: "text", label: "Text", icon: Type },
+	{ id: "shapes", label: "Shapes", icon: Shapes },
+	{ id: "layers", label: "Layers", icon: Layers },
+] as const;
 
 type DragState =
 	| {
@@ -87,6 +122,18 @@ type LayerPointerDrag = {
 	active: boolean;
 };
 
+type RequestField = "contactName" | "contactEmail" | "quantity";
+type RequestFieldErrors = Partial<Record<RequestField, string>>;
+
+function summarizeRequestFieldErrors(errors: RequestFieldErrors) {
+	const messages = Object.values(errors).filter((message): message is string =>
+		Boolean(message),
+	);
+	return messages.length
+		? `Please correct the highlighted fields. ${messages.join(" ")}`
+		: null;
+}
+
 function getLayerLabel(element: DesignElement, assetName?: string) {
 	if (element.type === "image") {
 		return assetName ? `Photo · ${assetName}` : "Photo";
@@ -115,7 +162,27 @@ function getElementBounds(element: TransformableElement, canvasWidth: number) {
 export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 	const trpc = useTRPC();
 	const submitOrder = useMutation(trpc.submitDemoOrder.mutationOptions());
-	const { data: session } = authClient.useSession();
+	const {
+		session,
+		state: sessionState,
+		refetch: refreshSession,
+	} = useAuthSession();
+	const [notice, setNotice] = useState<{
+		title: string;
+		message: string;
+		focus?: boolean;
+		retry?: () => void;
+		link?: string;
+	} | null>(null);
+	const [saveBusy, setSaveBusy] = useState(false);
+	const [photoBusy, setPhotoBusy] = useState(false);
+	const [exportStage, setExportStage] = useState<ExportStage>("preparing");
+	const operationBusyRef = useRef(false);
+	const photoBusyRef = useRef(false);
+	const requestBusyRef = useRef(false);
+	const [requestBusy, setRequestBusy] = useState(false);
+	const draftIdRef = useRef(draftId);
+	const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
 	const [document, setDocument] = useState<DesignDocument>(() =>
 		createDocument(),
 	);
@@ -133,9 +200,14 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 	const [textDraft, setTextDraft] = useState("A moment worth keeping");
 	const [contactName, setContactName] = useState("");
 	const [contactEmail, setContactEmail] = useState("");
-	const [quantity, setQuantity] = useState(1);
+	const [quantity, setQuantity] = useState<number | "">(1);
 	const [requestError, setRequestError] = useState<string | null>(null);
+	const [requestFieldErrors, setRequestFieldErrors] =
+		useState<RequestFieldErrors>({});
 	const requestErrorRef = useRef<HTMLParagraphElement>(null);
+	const requestNameRef = useRef<HTMLInputElement>(null);
+	const requestEmailRef = useRef<HTMLInputElement>(null);
+	const requestQuantityRef = useRef<HTMLInputElement>(null);
 	const [activePanel, setActivePanel] = useState<
 		"templates" | "photos" | "text" | "shapes" | "layers"
 	>("templates");
@@ -147,6 +219,13 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 	);
 	const [exportOpen, setExportOpen] = useState(false);
 	const [exportBusy, setExportBusy] = useState(false);
+	const [exportResult, setExportResult] = useState<{
+		blob: Blob;
+		format: ExportFormat;
+		filename: string;
+		width: number;
+		height: number;
+	} | null>(null);
 	const [orientationDismissed, setOrientationDismissed] = useState(false);
 	const [layerDragId, setLayerDragId] = useState<string | null>(null);
 	const [layerDropId, setLayerDropId] = useState<string | null>(null);
@@ -159,7 +238,11 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 	const layerPointerRef = useRef<LayerPointerDrag | null>(null);
 	const suppressLayerClickRef = useRef(false);
 	const documentRef = useRef(document);
+	const assetsRef = useRef(assets);
 	const savedStateRef = useRef<string | null>(null);
+	const createdAtRef = useRef<string | null>(null);
+	const autosaveRetryRef = useRef<number | undefined>(undefined);
+	const [hydrated, setHydrated] = useState(false);
 	const canvasRef = useRef<HTMLDivElement>(null);
 	const exportMenuRef = useRef<HTMLDivElement>(null);
 	const toolButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -174,13 +257,70 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 	const selectedBounds = selectedElement
 		? getElementBounds(selectedElement, document.width)
 		: null;
-	const isDirty =
-		savedStateRef.current !== null &&
-		savedStateRef.current !==
-			JSON.stringify({
-				document,
-				projectName: projectName.trim() || "Untitled memory",
+	const currentSnapshot = JSON.stringify({
+		document,
+		projectName: projectName.trim() || "Untitled memory",
+	});
+	// The editor differs from the copy stored in this browser. Never true before
+	// the draft has loaded, so a blank starting document cannot overwrite it.
+	const needsSave = hydrated && savedStateRef.current !== currentSnapshot;
+
+	// Autosave keeps the design in this browser only (IndexedDB, via
+	// saveCreationDraft); nothing is sent to the server. It is debounced, retried
+	// with backoff, and flushed when the tab is hidden, as AGENTS.md requires.
+	const runAutosave = useEffectEvent(async (attempt: number) => {
+		try {
+			await saveGuest("auto");
+		} catch (error) {
+			if (attempt < 3) {
+				setStatus("Couldn’t autosave. Retrying…");
+				autosaveRetryRef.current = window.setTimeout(
+					() => void runAutosave(attempt + 1),
+					attempt * 2000,
+				);
+				return;
+			}
+			setStatus("Autosave needs attention");
+			setNotice({
+				title: "Your changes aren’t saved",
+				message: actionErrorMessage(error, "save"),
+				retry: () => void manualSave(),
 			});
+		}
+	});
+	// biome-ignore lint/correctness/useExhaustiveDependencies: each edit changes the snapshot and restarts the debounce.
+	useEffect(() => {
+		if (!needsSave) return;
+		window.clearTimeout(autosaveRetryRef.current);
+		const timer = window.setTimeout(() => void runAutosave(1), 1200);
+		return () => {
+			window.clearTimeout(timer);
+			window.clearTimeout(autosaveRetryRef.current);
+		};
+	}, [needsSave, currentSnapshot]);
+	const flushAutosave = useEffectEvent(() => {
+		if (needsSave) void runAutosave(1);
+	});
+	useEffect(() => {
+		function saveWhenHidden() {
+			if (window.document.visibilityState === "hidden") flushAutosave();
+		}
+		window.document.addEventListener("visibilitychange", saveWhenHidden);
+		return () =>
+			window.document.removeEventListener("visibilitychange", saveWhenHidden);
+	}, []);
+	// Covers closing the tab inside the short autosave delay.
+	useEffect(() => {
+		if (!needsSave) return;
+		function warnBeforeUnload(event: BeforeUnloadEvent) {
+			event.preventDefault();
+		}
+		window.addEventListener("beforeunload", warnBeforeUnload);
+		return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+	}, [needsSave]);
+	const captureGuestBaseline = useEffectEvent(() => {
+		savedStateRef.current = currentSnapshot;
+	});
 	const undo = useCallback(() => {
 		if (historyIndex <= 0) return;
 		const nextIndex = historyIndex - 1;
@@ -204,10 +344,12 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 		let cancelled = false;
 		async function hydrate() {
 			const prepared = draftId ? await getCreationDraft(draftId) : null;
+			if (draftId && !prepared) throw new Error("The chosen draft is missing.");
 			const legacy = prepared ? null : readLegacyGuestDesign();
 			if (cancelled) return;
 			if (prepared) {
 				const needsImageRepair =
+					prepared.templateRevision === undefined &&
 					prepared.assets.length > 0 &&
 					!prepared.document.elements.some(
 						(element) => element.type === "image",
@@ -237,6 +379,7 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 					});
 				}
 				setDraftIdState(prepared.id);
+				draftIdRef.current = prepared.id;
 				setDraftTemplateId(prepared.templateId);
 				setDocument(preparedDocument);
 				setHistory([preparedDocument]);
@@ -246,7 +389,9 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 					document: preparedDocument,
 					projectName: prepared.projectName,
 				});
-				setStatus("Prepared design loaded · save when ready");
+				createdAtRef.current = prepared.createdAt;
+				setStatus("Design loaded · changes save automatically");
+				setHydrated(true);
 				return;
 			}
 			if (legacy) {
@@ -259,34 +404,49 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 					projectName: legacy.projectName,
 				});
 				setStatus("Recovered guest design");
+				setHydrated(true);
 				return;
 			}
-			setStatus("Guest mode · save when ready");
+			captureGuestBaseline();
+			setStatus("New design · changes save automatically");
+			setHydrated(true);
 		}
-		void hydrate();
+		void hydrate().catch((error: unknown) => {
+			if (!cancelled)
+				setNotice({
+					title: "Design could not be opened",
+					message: actionErrorMessage(error, "load"),
+					retry: () => window.location.reload(),
+				});
+		});
 		return () => {
 			cancelled = true;
 		};
 	}, [draftId]);
 	useEffect(() => {
 		documentRef.current = document;
-	}, [document]);
+		assetsRef.current = assets;
+	}, [document, assets]);
 	useEffect(() => {
-		if (!session) return;
+		if (!hydrated || !session) return;
 		const params = new URLSearchParams(window.location.search);
 		const authAction = params.get("auth");
-		if (authAction === "review") setRequestOpen(true);
+		if (authAction === "review") {
+			setContactName(session.user.name || "");
+			setContactEmail(session.user.email || "");
+			setRequestOpen(true);
+		}
 		if (authAction === "export") setExportOpen(true);
 		if (authAction) {
 			params.delete("auth");
 			const query = params.toString();
 			window.history.replaceState(
-				{},
+				window.history.state,
 				"",
 				`${window.location.pathname}${query ? `?${query}` : ""}`,
 			);
 		}
-	}, [session]);
+	}, [hydrated, session]);
 	useEffect(() => {
 		if (!exportOpen) return;
 		function closeExportMenu(event: MouseEvent) {
@@ -324,6 +484,23 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 	}, [redo, undo]);
 
 	function commit(nextDocument: DesignDocument, message = "Unsaved changes") {
+		if (!designDocumentSchema.safeParse(nextDocument).success) {
+			setNotice({
+				title: "This change exceeds the design limits",
+				message:
+					"Use up to 100 layers and 240 characters per text layer. Reduce the size or remove a layer before trying again.",
+				focus: true,
+			});
+			return;
+		}
+		const currentHistory = history[historyIndex];
+		if (
+			currentHistory &&
+			JSON.stringify({ ...currentHistory, updatedAt: "" }) ===
+				JSON.stringify({ ...nextDocument, updatedAt: "" })
+		) {
+			return;
+		}
 		const next = { ...nextDocument, updatedAt: new Date().toISOString() };
 		setDocument(next);
 		setHistory((current) =>
@@ -387,12 +564,24 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 	}
 
 	async function addPhoto(file: File | undefined) {
-		if (!file) return;
+		if (!file || photoBusyRef.current) return;
+		if (document.elements.length >= 100 || assets.length >= 30) {
+			setNotice({
+				title: "Photo limit reached",
+				message:
+					"This browser design supports 30 imported photos and 100 layers. Remove a layer or start another design.",
+				focus: true,
+			});
+			return;
+		}
+		photoBusyRef.current = true;
+		setPhotoBusy(true);
+		setNotice(null);
 		try {
 			const asset = await createAssetFromFile(file);
-			const nextAssets = [...assets, asset];
+			const nextAssets = [...assetsRef.current, asset];
 			const nextDocument = addAssetToDocument(
-				document,
+				documentRef.current,
 				asset,
 				nextAssets.length - 1,
 			);
@@ -400,20 +589,26 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 			commit(nextDocument);
 			setSelectedId(nextDocument.elements.at(-1)?.id ?? null);
 		} catch (error) {
-			setStatus(
-				error instanceof Error
-					? error.message
-					: "This photo could not be added.",
-			);
+			setNotice({
+				title: "Photo could not be added",
+				message: actionErrorMessage(error, "photo"),
+				focus: true,
+				retry: () => fileRef.current?.click(),
+			});
+		} finally {
+			photoBusyRef.current = false;
+			setPhotoBusy(false);
 		}
 	}
 
-	async function saveGuest(): Promise<CreationDraft> {
+	async function saveGuest(
+		mode: "manual" | "auto" = "manual",
+	): Promise<CreationDraft> {
 		const now = new Date().toISOString();
 		const savedDraft: CreationDraft = {
 			version: 1,
 			templateRevision: templateCompositionVersion,
-			id: draftIdState ?? crypto.randomUUID(),
+			id: draftIdRef.current ?? crypto.randomUUID(),
 			productId: document.productId,
 			templateId: draftTemplateId,
 			projectName: projectName.trim() || "Untitled memory",
@@ -421,17 +616,45 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 			document,
 			assets,
 			step: 3,
-			createdAt: now,
+			createdAt: createdAtRef.current ?? now,
 			updatedAt: now,
 		};
+		draftIdRef.current = savedDraft.id;
 		setDraftIdState(savedDraft.id);
-		await saveCreationDraft(savedDraft);
+		const save = saveQueueRef.current
+			.catch(() => {})
+			.then(() => saveCreationDraft(savedDraft));
+		saveQueueRef.current = save;
+		await save;
+		createdAtRef.current = savedDraft.createdAt;
 		savedStateRef.current = JSON.stringify({
 			document,
 			projectName: savedDraft.projectName,
 		});
-		setStatus("Saved in this browser");
+		setStatus(
+			mode === "auto" ? "Autosaved in this browser" : "Saved in this browser",
+		);
 		return savedDraft;
+	}
+
+	async function manualSave() {
+		if (operationBusyRef.current) return;
+		operationBusyRef.current = true;
+		setSaveBusy(true);
+		setNotice(null);
+		try {
+			await saveGuest();
+		} catch (error) {
+			setNotice({
+				title: "Design could not be saved",
+				message: actionErrorMessage(error, "save"),
+				focus: true,
+				retry: () => void manualSave(),
+			});
+		} finally {
+			operationBusyRef.current = false;
+			setSaveBusy(false);
+		}
 	}
 
 	function duplicateDesign() {
@@ -443,7 +666,10 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 		setDocument(nextDocument);
 		setHistory([nextDocument]);
 		setHistoryIndex(0);
-		setDraftIdState(crypto.randomUUID());
+		const nextId = crypto.randomUUID();
+		draftIdRef.current = nextId;
+		setDraftIdState(nextId);
+		createdAtRef.current = null;
 		setProjectName(`${projectName.trim() || "Untitled memory"} copy`);
 		setStatus("Duplicated guest design");
 	}
@@ -459,220 +685,216 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 		setSelectedId(null);
 	}
 
-	function redirectToAuth(action: "review" | "export") {
-		const params = new URLSearchParams(window.location.search);
-		params.set("auth", action);
-		const query = params.toString();
-		const returnTo = `${window.location.pathname}${query ? `?${query}` : ""}`;
-		window.location.assign(`/login?returnTo=${encodeURIComponent(returnTo)}`);
-	}
-
-	function buildExportSvg() {
-		const escapeXml = (value: string) =>
-			value.replace(
-				/[<>&'"]/g,
-				(character) =>
-					({
-						"<": "&lt;",
-						">": "&gt;",
-						"&": "&amp;",
-						"'": "&apos;",
-						'"': "&quot;",
-					})[character] ?? character,
-			);
-		const content = document.elements
-			.map((element) => {
-				if (element.type === "text") {
-					const rotation = element.rotation
-						? ` transform="rotate(${element.rotation} ${element.x} ${element.y})"`
-						: "";
-					return `<text x="${element.x}" y="${element.y}" font-family="Inter, sans-serif" font-size="${element.fontSize}" fill="${escapeXml(element.color)}"${rotation}>${escapeXml(element.text)}</text>`;
-				}
-				if (element.type === "shape") {
-					const fill = escapeXml(element.fill);
-					const x = element.x;
-					const y = element.y;
-					const width = element.width;
-					const height = element.height;
-					const rotation = element.rotation
-						? ` transform="rotate(${element.rotation} ${x + width / 2} ${y + height / 2})"`
-						: "";
-					if (element.shape === "circle" || element.shape === "blob")
-						return `<ellipse cx="${x + width / 2}" cy="${y + height / 2}" rx="${width / 2}" ry="${height / 2}" fill="${fill}"${rotation} />`;
-					if (element.shape === "triangle")
-						return `<polygon points="${x + width / 2},${y} ${x + width},${y + height} ${x},${y + height}" fill="${fill}"${rotation} />`;
-					if (element.shape === "star") {
-						const points = Array.from({ length: 10 }, (_, index) => {
-							const angle = -Math.PI / 2 + (index * Math.PI) / 5;
-							const radius = index % 2 === 0 ? 0.5 : 0.22;
-							return `${x + width / 2 + Math.cos(angle) * width * radius},${y + height / 2 + Math.sin(angle) * height * radius}`;
-						}).join(" ");
-						return `<polygon points="${points}" fill="${fill}"${rotation} />`;
-					}
-					return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${element.shape === "line" ? height / 2 : 0}" fill="${fill}"${rotation} />`;
-				}
-				const asset = assets.find((item) => item.id === element.assetId);
-				return asset
-					? `<image href="${asset.dataUrl}" x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" preserveAspectRatio="xMidYMid slice"${element.rotation ? ` transform="rotate(${element.rotation} ${element.x + element.width / 2} ${element.y + element.height / 2})"` : ""} />`
-					: "";
-			})
-			.join("");
-		return `<svg xmlns="http://www.w3.org/2000/svg" width="${document.width}" height="${document.height}" viewBox="0 0 ${document.width} ${document.height}"><rect width="100%" height="100%" fill="${document.background}" />${content}</svg>`;
-	}
-
-	function downloadBlob(blob: Blob, filename: string) {
-		const url = URL.createObjectURL(blob);
-		const link = window.document.createElement("a");
-		link.href = url;
-		link.download = filename;
-		link.click();
-		URL.revokeObjectURL(url);
-	}
-
-	async function exportDesign(format: "png" | "jpeg" | "svg") {
-		if (!session) {
-			setAuthPrompt("export");
-			return;
+	function requireSession(action: "review" | "export") {
+		if (sessionState === "loading") {
+			setNotice({
+				title: "Checking your account",
+				message:
+					"Your session is still loading. Try this action again in a moment.",
+				focus: true,
+			});
+			return false;
 		}
+		if (sessionState === "error") {
+			setNotice({
+				title: "Account could not be checked",
+				message:
+					"We couldn’t confirm your session. Your design is safe in this tab. Retry the account check before continuing.",
+				focus: true,
+				retry: () => {
+					void refreshSession();
+				},
+			});
+			return false;
+		}
+		if (!session) {
+			setAuthPrompt(action);
+			return false;
+		}
+		return true;
+	}
+
+	async function redirectToAuth(action: "review" | "export") {
+		if (operationBusyRef.current) return;
+		operationBusyRef.current = true;
+		setSaveBusy(true);
+		try {
+			const saved = await saveGuest();
+			const returnTo = `/studio?draft=${encodeURIComponent(saved.id)}&auth=${action}`;
+			window.location.assign(
+				`/login?mode=signin&returnTo=${encodeURIComponent(returnTo)}`,
+			);
+		} catch (error) {
+			setAuthPrompt(null);
+			setNotice({
+				title: "Save before signing in",
+				message: actionErrorMessage(error, "save"),
+				focus: true,
+				retry: () => void redirectToAuth(action),
+			});
+		} finally {
+			operationBusyRef.current = false;
+			setSaveBusy(false);
+		}
+	}
+
+	async function exportDesign(format: ExportFormat) {
+		if (operationBusyRef.current || !requireSession("export")) return;
+		operationBusyRef.current = true;
 		setExportBusy(true);
 		setExportOpen(false);
+		setNotice(null);
 		try {
-			const svg = buildExportSvg();
-			if (format === "svg") {
-				downloadBlob(
-					new Blob([svg], { type: "image/svg+xml" }),
-					`${document.productId}-preview.svg`,
-				);
-				setStatus("SVG preview downloaded");
-				return;
-			}
-			const imageUrl = URL.createObjectURL(
-				new Blob([svg], { type: "image/svg+xml" }),
-			);
-			const image = new Image();
-			image.decoding = "async";
-			image.src = imageUrl;
-			await image.decode();
-			URL.revokeObjectURL(imageUrl);
-			const canvas = window.document.createElement("canvas");
-			canvas.width = document.width;
-			canvas.height = document.height;
-			const context = canvas.getContext("2d");
-			if (!context) throw new Error("Canvas export is unavailable");
-			if (format === "jpeg") {
-				context.fillStyle = document.background;
-				context.fillRect(0, 0, canvas.width, canvas.height);
-			}
-			context.drawImage(image, 0, 0);
-			const blob = await new Promise<Blob | null>((resolve) =>
-				canvas.toBlob(resolve, `image/${format}`, 0.95),
-			);
-			if (!blob) throw new Error("Image export failed");
-			downloadBlob(blob, `${document.productId}-preview.${format}`);
-			setStatus(`${format.toUpperCase()} preview downloaded`);
-		} catch {
-			setStatus("Export failed. Try the preview again.");
+			const blob = await createDesignExport(document, assets, {
+				format,
+				onProgress: setExportStage,
+			});
+			setExportResult({
+				blob,
+				format,
+				filename: `${projectName || document.productId}-preview.${format}`,
+				width: document.width,
+				height: document.height,
+			});
+			setStatus(`${format.toUpperCase()} preview ready to download`);
+		} catch (error) {
+			setNotice({
+				title: `${format.toUpperCase()} export failed`,
+				message: getDesignExportErrorMessage(error),
+				focus: true,
+				retry: () => void exportDesign(format),
+			});
 		} finally {
+			operationBusyRef.current = false;
 			setExportBusy(false);
 		}
 	}
+	function closeExportPreview() {
+		setExportResult(null);
+		window.requestAnimationFrame(() =>
+			exportMenuRef.current
+				?.querySelector<HTMLButtonElement>("button")
+				?.focus(),
+		);
+	}
 
 	async function copyProjectLink() {
-		if (!session) {
-			setAuthPrompt("export");
-			return;
-		}
+		if (operationBusyRef.current || !requireSession("export")) return;
+		operationBusyRef.current = true;
 		setExportBusy(true);
 		setExportOpen(false);
+		setNotice(null);
+		let url: string | undefined;
 		try {
-			const savedDraft = draftIdState ? null : await saveGuest();
-			const id = savedDraft?.id ?? draftIdState;
-			if (!id) throw new Error("Design has not been saved");
-			const url = `${window.location.origin}/studio?draft=${encodeURIComponent(id)}`;
+			const saved = await saveGuest();
+			url = `${window.location.origin}/studio?draft=${encodeURIComponent(saved.id)}`;
 			await navigator.clipboard.writeText(url);
-			setStatus("Copied a browser-local project link");
-		} catch {
-			setStatus("Could not copy the project link");
+			setStatus("Copied a link for this browser");
+		} catch (error) {
+			setNotice({
+				title: url ? "Copy this project address" : "Save before copying a link",
+				message: actionErrorMessage(error, url ? "copy" : "save"),
+				focus: true,
+				link: url,
+				retry: () => void copyProjectLink(),
+			});
 		} finally {
+			operationBusyRef.current = false;
 			setExportBusy(false);
 		}
 	}
 
 	function openRequestReview() {
-		if (!session) {
-			setAuthPrompt("review");
-			return;
-		}
+		if (!requireSession("review")) return;
+		setContactName((current) => current || session?.user.name || "");
+		setContactEmail((current) => current || session?.user.email || "");
 		setRequestError(null);
+		setRequestFieldErrors({});
 		setRequestOpen(true);
 	}
 
 	async function requestOrder(event: React.FormEvent<HTMLFormElement>) {
 		event.preventDefault();
+		if (requestBusyRef.current) return;
 		if (!session) {
-			setRequestOpen(false);
-			setAuthPrompt("review");
-			return;
-		}
-		if (!contactName.trim() || !contactEmail.includes("@")) {
-			setRequestError("Add your name and a valid email to send the request.");
+			setRequestError(
+				"Your session has expired. Close this dialog and sign in again. Your design is still here.",
+			);
 			window.requestAnimationFrame(() => requestErrorRef.current?.focus());
 			return;
 		}
+		const details = orderRequestSchema.safeParse({
+			designId: document.id,
+			productId: document.productId,
+			quantity: typeof quantity === "number" ? quantity : Number.NaN,
+			contactName: contactName.trim(),
+			contactEmail: contactEmail.trim(),
+			notes: "Browser-local demo design. No production order or payment.",
+		});
+		if (!details.success) {
+			const fieldErrors: RequestFieldErrors = {};
+			for (const issue of details.error.issues) {
+				if (issue.path[0] === "contactName")
+					fieldErrors.contactName = "Enter a name between 2 and 80 characters.";
+				if (issue.path[0] === "contactEmail")
+					fieldErrors.contactEmail =
+						"Enter a valid email address up to 254 characters.";
+				if (issue.path[0] === "quantity")
+					fieldErrors.quantity =
+						"Choose a whole-number quantity from 1 to 100.";
+			}
+			setRequestFieldErrors(fieldErrors);
+			setRequestError(summarizeRequestFieldErrors(fieldErrors));
+			window.requestAnimationFrame(() => {
+				if (fieldErrors.contactName) requestNameRef.current?.focus();
+				else if (fieldErrors.contactEmail) requestEmailRef.current?.focus();
+				else if (fieldErrors.quantity) requestQuantityRef.current?.focus();
+			});
+			return;
+		}
+		requestBusyRef.current = true;
+		setRequestBusy(true);
 		setRequestError(null);
+		let saved: CreationDraft;
+		try {
+			saved = await saveGuest();
+		} catch (error) {
+			setRequestError(actionErrorMessage(error, "save"));
+			window.requestAnimationFrame(() => requestErrorRef.current?.focus());
+			requestBusyRef.current = false;
+			setRequestBusy(false);
+			return;
+		}
 		try {
 			const result = await submitOrder.mutateAsync({
-				designId: document.id,
-				productId: document.productId,
-				quantity,
-				contactName,
-				contactEmail,
-				notes: "Created in the guest studio",
+				...details.data,
+				designId: saved.id,
 			});
-			const orders = JSON.parse(
-				localStorage.getItem("printclub:demo-orders") ?? "[]",
-			) as unknown[];
-			localStorage.setItem(
-				"printclub:demo-orders",
-				JSON.stringify([
-					...orders,
-					{
-						id: result.orderId,
-						designId: document.id,
-						productId: document.productId,
-						quantity,
-						contactName,
-						contactEmail,
-						createdAt: new Date().toISOString(),
-					},
-				]),
-			);
-			setStatus(`${result.message} Reference ${result.orderId}.`);
 			setRequestOpen(false);
-		} catch {
-			const order = {
-				id: `offline-${Date.now()}`,
-				designId: document.id,
-				productId: document.productId,
-				quantity,
-				contactName,
-				contactEmail,
-				createdAt: new Date().toISOString(),
-			};
-			const orders = JSON.parse(
-				localStorage.getItem("printclub:demo-orders") ?? "[]",
-			) as unknown[];
-			localStorage.setItem(
-				"printclub:demo-orders",
-				JSON.stringify([...orders, order]),
-			);
-			setStatus(
-				"Saved as a local demo request. Start the API to send it to the studio queue.",
-			);
-			setRequestOpen(false);
+			setStatus(`Demo request received · ${result.orderId}`);
+			try {
+				rememberDemoOrder({
+					...details.data,
+					draftId: saved.id,
+					id: result.orderId,
+					createdAt: new Date().toISOString(),
+					status: "received",
+				});
+			} catch {
+				setNotice({
+					title: "Request received; history could not be saved",
+					message: `Keep reference ${result.orderId}. Your browser blocked saving its history. Do not submit again.`,
+					focus: true,
+				});
+			}
+		} catch (error) {
+			setRequestError(actionErrorMessage(error, "request"));
+			window.requestAnimationFrame(() => requestErrorRef.current?.focus());
+		} finally {
+			requestBusyRef.current = false;
+			setRequestBusy(false);
 		}
 	}
-
 	function selectTool(tool: typeof activePanel) {
 		setActivePanel(tool);
 		setPanelOpen(true);
@@ -968,15 +1190,54 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 		});
 	}
 
-	function leaveForSetup(event: React.MouseEvent<HTMLAnchorElement>) {
-		if (!isDirty) return;
-		if (
-			!window.confirm(
-				"Leave the editor? Save first if you want to keep your latest changes.",
-			)
-		) {
-			event.preventDefault();
+	// Leaving mid-debounce saves first, so there is nothing to confirm unless
+	// browser storage refuses the write.
+	async function leaveForSetup(event: React.MouseEvent<HTMLAnchorElement>) {
+		if (!needsSave) return;
+		event.preventDefault();
+		const href = event.currentTarget.href;
+		try {
+			await saveGuest("auto");
+		} catch {
+			if (
+				!window.confirm(
+					"Your latest changes couldn’t be saved in this browser. Leave anyway?",
+				)
+			) {
+				return;
+			}
 		}
+		window.location.assign(href);
+	}
+
+	if (!hydrated) {
+		return (
+			<div className="studio-app">
+				<main className="studio-app__loading" id="main-content">
+					{notice ? (
+						<ActionNotice
+							title={notice.title}
+							message={notice.message}
+							focus={notice.focus}
+						>
+							{notice.retry ? (
+								<Button variant="outline" onClick={notice.retry}>
+									Try again
+								</Button>
+							) : null}
+						</ActionNotice>
+					) : (
+						<p role="status">Opening your design…</p>
+					)}
+					<a
+						className="studio-app__back studio-app__back--setup"
+						href="/create"
+					>
+						<ArrowLeft aria-hidden="true" /> Back to print setup
+					</a>
+				</main>
+			</div>
+		);
 	}
 
 	return (
@@ -986,7 +1247,7 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 					<a
 						className="studio-app__back studio-app__back--home"
 						href="/"
-						onClick={leaveForSetup}
+						onClick={(event) => void leaveForSetup(event)}
 					>
 						<ArrowLeft aria-hidden="true" /> Back to printclub
 					</a>
@@ -997,7 +1258,7 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 								? `/create?draft=${draftIdState}&step=3`
 								: "/create?resume=true"
 						}
-						onClick={leaveForSetup}
+						onClick={(event) => void leaveForSetup(event)}
 					>
 						<ArrowLeft aria-hidden="true" />
 						Back to setup
@@ -1005,11 +1266,17 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 				</nav>
 				<div className="studio-app__project">
 					<span className="studio-app__eyebrow">
-						{session ? "Member studio" : "Guest studio"}
+						{session
+							? "Member studio"
+							: sessionState === "anonymous"
+								? "Guest studio"
+								: "Print studio"}
 					</span>
 					<label>
 						<span className="sr-only">Project name</span>
 						<input
+							name="projectName"
+							autoComplete="off"
 							value={projectName}
 							onChange={(event) => {
 								setProjectName(event.target.value);
@@ -1065,74 +1332,103 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 					<Button
 						className="studio-action-button"
 						variant="outline"
-						onClick={() => void saveGuest()}
+						onClick={() => void manualSave()}
+						disabled={!hydrated || saveBusy || exportBusy}
 					>
-						<Save data-icon="inline-start" aria-hidden="true" /> Save
+						<Save data-icon="inline-start" aria-hidden="true" />{" "}
+						{saveBusy ? "Saving…" : "Save"}
 					</Button>
 					<div className="studio-export-menu" ref={exportMenuRef}>
 						<Button
 							className="studio-action-button studio-action-button--primary"
 							onClick={() => {
-								if (!session) {
-									setAuthPrompt("export");
-									return;
-								}
+								if (!requireSession("export")) return;
 								setExportOpen((open) => !open);
 							}}
-							aria-haspopup="menu"
+							aria-controls="studio-export-options"
 							aria-expanded={exportOpen}
-							disabled={exportBusy}
+							disabled={!hydrated || exportBusy || saveBusy}
 						>
 							<Download data-icon="inline-start" aria-hidden="true" />
 							Export preview
 						</Button>
 						{exportOpen && session ? (
-							<div className="studio-export-menu__panel" role="menu">
+							<fieldset
+								className="studio-export-menu__panel"
+								id="studio-export-options"
+								aria-label="Export options"
+							>
 								<strong>Export your design</strong>
-								<button
-									type="button"
-									role="menuitem"
-									onClick={() => void exportDesign("png")}
-								>
+								<button type="button" onClick={() => void exportDesign("png")}>
 									<Download aria-hidden="true" /> PNG image
 								</button>
-								<button
-									type="button"
-									role="menuitem"
-									onClick={() => void exportDesign("jpeg")}
-								>
+								<button type="button" onClick={() => void exportDesign("jpeg")}>
 									<Download aria-hidden="true" /> JPEG image
 								</button>
-								<button
-									type="button"
-									role="menuitem"
-									onClick={() => void exportDesign("svg")}
-								>
+								<button type="button" onClick={() => void exportDesign("svg")}>
 									<Download aria-hidden="true" /> SVG preview
 								</button>
-								<button
-									type="button"
-									role="menuitem"
-									onClick={() => void copyProjectLink()}
-								>
+								<button type="button" onClick={() => void copyProjectLink()}>
 									<Link2 aria-hidden="true" /> Copy browser link
 								</button>
 								<small>
 									Links work on this browser until cloud sharing is added.
 								</small>
-							</div>
+							</fieldset>
 						) : null}
 					</div>
 					<Button
 						className="studio-action-button"
 						variant="outline"
 						onClick={openRequestReview}
+						disabled={!hydrated || requestBusy || saveBusy}
 					>
 						<Send data-icon="inline-start" aria-hidden="true" />
 						Request review
 					</Button>
 				</div>
 			</header>
+			{notice ? (
+				<ActionNotice
+					title={notice.title}
+					message={notice.message}
+					focus={notice.focus}
+					onDismiss={() => setNotice(null)}
+				>
+					{notice.link ? (
+						<label>
+							Project address
+							<input
+								readOnly
+								value={notice.link}
+								onFocus={(event) => event.currentTarget.select()}
+							/>
+						</label>
+					) : null}
+					{notice.retry ? (
+						<Button variant="outline" onClick={notice.retry}>
+							Retry
+						</Button>
+					) : null}
+				</ActionNotice>
+			) : null}
+			{exportBusy ? (
+				<div className="studio-export-progress" role="status">
+					<Loader2 aria-hidden="true" className="button-spinner" />
+					{exportStage === "preparing"
+						? "Preparing your preview…"
+						: exportStage === "rendering"
+							? "Rendering photos and text…"
+							: exportStage === "encoding"
+								? "Creating the image file…"
+								: "Starting the download…"}
+				</div>
+			) : null}
+			{photoBusy ? (
+				<div className="studio-export-progress" role="status">
+					Processing your photo…
+				</div>
+			) : null}
 			<div
 				className={[
 					"studio-app__body",
@@ -1142,15 +1438,7 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 					.join(" ")}
 			>
 				<nav className="studio-toolrail" aria-label="Studio tools">
-					{(
-						[
-							["templates", "Templates"],
-							["photos", "Photos"],
-							["text", "Text"],
-							["shapes", "Shapes"],
-							["layers", "Layers"],
-						] as const
-					).map(([tool, label]) => (
+					{studioTools.map(({ id: tool, label, icon: Icon }) => (
 						<button
 							type="button"
 							className={activePanel === tool ? "is-active" : ""}
@@ -1162,15 +1450,7 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 							key={tool}
 						>
 							<span className="studio-toolrail__icon" aria-hidden="true">
-								{tool === "templates"
-									? "✦"
-									: tool === "photos"
-										? "◈"
-										: tool === "text"
-											? "T"
-											: tool === "shapes"
-												? "◇"
-												: "≡"}
+								<Icon />
 							</span>
 							{label}
 						</button>
@@ -1203,7 +1483,7 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 								});
 							}}
 						>
-							×
+							<X aria-hidden="true" />
 						</button>
 					</div>
 					{activePanel === "templates" ? (
@@ -1253,6 +1533,7 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 									ref={fileRef}
 									type="file"
 									accept="image/jpeg,image/png,image/webp"
+									disabled={photoBusy}
 									onChange={(event) => {
 										void addPhoto(event.target.files?.[0]);
 										event.currentTarget.value = "";
@@ -1269,6 +1550,8 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 							<label className="studio-field">
 								Text to add
 								<input
+									name="textDraft"
+									autoComplete="off"
 									value={textDraft}
 									onChange={(event) => setTextDraft(event.target.value)}
 									placeholder="A moment worth keeping…"
@@ -1413,7 +1696,7 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 						</div>
 					) : null}
 				</aside>
-				<main className="studio-workspace">
+				<section className="studio-workspace" aria-label="Design workspace">
 					<div className="studio-workspace__heading">
 						<div>
 							<span className="studio-app__eyebrow">Print preview</span>
@@ -1442,8 +1725,8 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 					{!orientationDismissed ? (
 						<div className="studio-orientation" role="status">
 							<span>
-								<strong>Quick tip:</strong> Select a layer to adjust it, then
-								save when you’re ready.
+								<strong>Quick tip:</strong> Select a layer to adjust it. Changes
+								save automatically in this browser.
 							</span>
 							<button
 								className="studio-icon-button studio-icon-button--quiet"
@@ -1451,7 +1734,7 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 								onClick={() => setOrientationDismissed(true)}
 								aria-label="Dismiss studio tip"
 							>
-								×
+								<X aria-hidden="true" />
 							</button>
 						</div>
 					) : null}
@@ -1598,7 +1881,7 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 						rotate. Arrow keys give precise movement; the dashed line is a
 						safe-area guide.
 					</div>
-				</main>
+				</section>
 				<aside className="studio-inspector" aria-label="Selection inspector">
 					<span className="studio-app__eyebrow">Inspector</span>
 					{selectedElement ? (
@@ -1624,6 +1907,8 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 										Text
 										<input
 											key={selectedElement.id}
+											name="layerText"
+											autoComplete="off"
 											defaultValue={selectedElement.text}
 											onBlur={(event) => {
 												const text = event.currentTarget.value.trim();
@@ -1752,7 +2037,7 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 						</>
 					) : (
 						<div className="studio-inspector__empty">
-							<span aria-hidden="true">✦</span>
+							<MousePointerClick aria-hidden="true" />
 							<h2>Select a layer</h2>
 							<p>
 								Choose an element on the artboard to inspect its crop, quality,
@@ -1777,170 +2062,222 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 				</aside>
 			</div>
 			<nav className="studio-mobile-dock" aria-label="Mobile studio tools">
-				{(
-					[
-						["templates", "Templates"],
-						["photos", "Photos"],
-						["text", "Text"],
-						["shapes", "Shapes"],
-						["layers", "Layers"],
-					] as const
-				).map(([tool, label]) => (
+				{studioTools.map(({ id: tool, label, icon: Icon }) => (
 					<button
 						type="button"
 						className={activePanel === tool ? "is-active" : ""}
 						onClick={() => selectTool(tool)}
 						key={tool}
 					>
-						<span aria-hidden="true">
-							{tool === "templates"
-								? "✦"
-								: tool === "photos"
-									? "◈"
-									: tool === "text"
-										? "T"
-										: tool === "shapes"
-											? "◇"
-											: "≡"}
+						<span className="studio-toolrail__icon" aria-hidden="true">
+							<Icon />
 						</span>
 						{label}
 					</button>
 				))}
 			</nav>
+			{exportResult ? (
+				<ExportPreviewDialog {...exportResult} onClose={closeExportPreview} />
+			) : null}
 			{authPrompt ? (
-				<div className="studio-dialog-backdrop" role="presentation">
-					<section
-						className="studio-dialog studio-auth-prompt"
-						role="dialog"
-						aria-modal="true"
-						aria-labelledby="auth-required-title"
+				<ModalDialog
+					className="studio-dialog studio-auth-prompt"
+					labelledBy="auth-required-title"
+					onClose={() => setAuthPrompt(null)}
+				>
+					<button
+						className="studio-dialog__close studio-icon-button studio-icon-button--quiet"
+						type="button"
+						data-dialog-close
+						aria-label="Close sign-in prompt"
+						onClick={() => setAuthPrompt(null)}
 					>
-						<button
-							className="studio-dialog__close studio-icon-button studio-icon-button--quiet"
-							type="button"
-							aria-label="Close sign-in prompt"
+						<X aria-hidden="true" />
+					</button>
+					<span className="studio-app__eyebrow">Keep your design moving</span>
+					<h2 id="auth-required-title">Sign in to continue</h2>
+					<p>
+						{authPrompt === "export"
+							? "Sign in to export your design or copy its browser link."
+							: "Sign in to send this design for a studio review."}
+					</p>
+					<div className="studio-dialog__actions">
+						<Button
+							className="studio-action-button studio-action-button--primary"
+							onClick={() => {
+								const action = authPrompt;
+								if (action) void redirectToAuth(action);
+							}}
+							disabled={saveBusy}
+						>
+							{saveBusy ? "Saving your design…" : "Continue to sign in"}
+						</Button>
+						<Button
+							className="studio-action-button"
+							variant="outline"
 							onClick={() => setAuthPrompt(null)}
 						>
-							×
-						</button>
-						<span className="studio-app__eyebrow">Keep your design moving</span>
-						<h2 id="auth-required-title">Sign in to continue</h2>
-						<p>
-							{authPrompt === "export"
-								? "Sign in to export your design or copy its browser link."
-								: "Sign in to send this design for a studio review."}
-						</p>
-						<div className="studio-dialog__actions">
-							<Button
-								className="studio-action-button studio-action-button--primary"
-								onClick={() => {
-									const action = authPrompt;
-									setAuthPrompt(null);
-									if (action) redirectToAuth(action);
-								}}
-							>
-								Continue to sign in
-							</Button>
-							<Button
-								className="studio-action-button"
-								variant="outline"
-								onClick={() => setAuthPrompt(null)}
-							>
-								Keep editing
-							</Button>
-						</div>
-					</section>
-				</div>
+							Keep editing
+						</Button>
+					</div>
+				</ModalDialog>
 			) : null}
 			{requestOpen ? (
-				<div className="studio-dialog-backdrop" role="presentation">
-					<section
-						className="studio-dialog"
-						role="dialog"
-						aria-modal="true"
-						aria-labelledby="request-title"
+				<ModalDialog
+					className="studio-dialog"
+					labelledBy="request-title"
+					onClose={() => setRequestOpen(false)}
+				>
+					<button
+						className="studio-dialog__close studio-icon-button studio-icon-button--quiet"
+						type="button"
+						data-dialog-close
+						aria-label="Close request dialog"
+						onClick={() => setRequestOpen(false)}
 					>
-						<button
-							className="studio-dialog__close studio-icon-button studio-icon-button--quiet"
-							type="button"
-							aria-label="Close request dialog"
-							onClick={() => setRequestOpen(false)}
+						<X aria-hidden="true" />
+					</button>
+					<span className="studio-app__eyebrow">One last detail</span>
+					<h2 id="request-title">Request a studio review</h2>
+					<p>
+						This sends a demo request to the API and keeps its reference in this
+						browser. No payment, production order, or fulfillment is created.
+					</p>
+					{requestError ? (
+						<p
+							ref={requestErrorRef}
+							className="studio-dialog__error"
+							role="alert"
+							aria-live="assertive"
+							tabIndex={-1}
 						>
-							×
-						</button>
-						<span className="studio-app__eyebrow">One last detail</span>
-						<h2 id="request-title">Request a studio review</h2>
-						<p>
-							No payment is taken. This demo stores a request for a future print
-							workflow.
+							<CircleAlert aria-hidden="true" />
+							<span>{requestError}</span>
 						</p>
-						{requestError ? (
-							<p
-								ref={requestErrorRef}
-								className="studio-dialog__error"
-								role="alert"
-								aria-live="assertive"
-								tabIndex={-1}
-							>
-								<CircleAlert aria-hidden="true" />
-								<span>{requestError}</span>
-							</p>
-						) : null}
-						<form onSubmit={requestOrder}>
-							<label className="studio-field">
-								Name
-								<input
-									required
-									name="contactName"
-									autoComplete="name"
-									value={contactName}
-									onChange={(event) => {
-										setContactName(event.target.value);
-										setRequestError(null);
-									}}
-									placeholder="Your name…"
-								/>
-							</label>
-							<label className="studio-field">
-								Email
-								<input
-									required
-									type="email"
-									name="contactEmail"
-									autoComplete="email"
-									value={contactEmail}
-									onChange={(event) => {
-										setContactEmail(event.target.value);
-										setRequestError(null);
-									}}
-									placeholder="you@example.com…"
-								/>
-							</label>
-							<label className="studio-field">
-								Quantity
-								<input
-									required
-									type="number"
-									name="quantity"
-									min="1"
-									max="100"
-									value={quantity}
-									onChange={(event) =>
-										setQuantity(Math.max(1, Number(event.target.value)))
-									}
-								/>
-							</label>
-							<Button
-								className="studio-action-button studio-action-button--primary"
-								type="submit"
-								disabled={submitOrder.isPending}
-							>
+					) : null}
+					<form onSubmit={requestOrder} noValidate>
+						<div className="studio-field">
+							<label htmlFor="request-contact-name">Name</label>
+							<input
+								ref={requestNameRef}
+								id="request-contact-name"
+								required
+								name="contactName"
+								minLength={2}
+								maxLength={80}
+								autoComplete="name"
+								aria-invalid={Boolean(requestFieldErrors.contactName)}
+								aria-describedby={
+									requestFieldErrors.contactName
+										? "request-contact-name-error"
+										: undefined
+								}
+								value={contactName}
+								onChange={(event) => {
+									setContactName(event.target.value);
+									const next = {
+										...requestFieldErrors,
+										contactName: undefined,
+									};
+									setRequestFieldErrors(next);
+									setRequestError(summarizeRequestFieldErrors(next));
+								}}
+								placeholder="Your name…"
+							/>
+							{requestFieldErrors.contactName ? (
+								<small id="request-contact-name-error">
+									{requestFieldErrors.contactName}
+								</small>
+							) : null}
+						</div>
+						<div className="studio-field">
+							<label htmlFor="request-contact-email">Email</label>
+							<input
+								ref={requestEmailRef}
+								id="request-contact-email"
+								required
+								type="email"
+								name="contactEmail"
+								maxLength={254}
+								autoComplete="email"
+								aria-invalid={Boolean(requestFieldErrors.contactEmail)}
+								aria-describedby={
+									requestFieldErrors.contactEmail
+										? "request-contact-email-error"
+										: undefined
+								}
+								value={contactEmail}
+								onChange={(event) => {
+									setContactEmail(event.target.value);
+									const next = {
+										...requestFieldErrors,
+										contactEmail: undefined,
+									};
+									setRequestFieldErrors(next);
+									setRequestError(summarizeRequestFieldErrors(next));
+								}}
+								placeholder="you@example.com…"
+							/>
+							{requestFieldErrors.contactEmail ? (
+								<small id="request-contact-email-error">
+									{requestFieldErrors.contactEmail}
+								</small>
+							) : null}
+						</div>
+						<div className="studio-field">
+							<label htmlFor="request-quantity">Quantity</label>
+							<input
+								ref={requestQuantityRef}
+								id="request-quantity"
+								required
+								type="number"
+								name="quantity"
+								step={1}
+								min="1"
+								max="100"
+								aria-invalid={Boolean(requestFieldErrors.quantity)}
+								aria-describedby={
+									requestFieldErrors.quantity
+										? "request-quantity-error"
+										: undefined
+								}
+								value={quantity}
+								onChange={(event) => {
+									const value = event.target.value;
+									const parsed = value === "" ? "" : Number(value);
+									setQuantity(
+										typeof parsed === "number" && !Number.isFinite(parsed)
+											? ""
+											: parsed,
+									);
+									const next = {
+										...requestFieldErrors,
+										quantity: undefined,
+									};
+									setRequestFieldErrors(next);
+									setRequestError(summarizeRequestFieldErrors(next));
+								}}
+							/>
+							{requestFieldErrors.quantity ? (
+								<small id="request-quantity-error">
+									{requestFieldErrors.quantity}
+								</small>
+							) : null}
+						</div>
+						<Button
+							className="studio-action-button studio-action-button--primary"
+							type="submit"
+							disabled={requestBusy}
+						>
+							{requestBusy ? (
+								<Loader2 className="button-spinner" aria-hidden="true" />
+							) : (
 								<Send data-icon="inline-start" aria-hidden="true" />
-								{submitOrder.isPending ? "Sending…" : "Submit demo request"}
-							</Button>
-						</form>
-					</section>
-				</div>
+							)}
+							{requestBusy ? "Sending request…" : "Submit demo request"}
+						</Button>
+					</form>
+				</ModalDialog>
 			) : null}
 		</div>
 	);

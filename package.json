@@ -40,8 +40,9 @@
     "db:watch": "turbo run db:watch -F @PhotoPrinting/db --",
     "db:stop": "turbo run db:stop -F @PhotoPrinting/db --",
     "db:down": "turbo run db:down -F @PhotoPrinting/db --",
-    "env:generate": "varlock codegen --path ./apps/web/ && varlock codegen --path ./apps/server/ && varlock codegen --path ./packages/db/",
-    "postinstall": "varlock codegen --path ./apps/web/ && varlock codegen --path ./apps/server/ && varlock codegen --path ./packages/db/",
+    "seed:dev-user": "turbo run seed:dev-user -F server",
+    "env:generate": "bun --bun run varlock codegen --path ./apps/web/ && bun --bun run varlock codegen --path ./apps/server/ && bun --bun run varlock codegen --path ./packages/db/",
+    "postinstall": "bun run env:generate",
     "auth:generate": "cd apps/server && bun run auth:generate",
     "check": "biome check .",
     "test": "turbo run test"

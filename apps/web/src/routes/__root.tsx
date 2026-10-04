@@ -1,5 +1,7 @@
 import type { AppRouter } from "@PhotoPrinting/api/routers/index";
 import { Toaster } from "@PhotoPrinting/ui/components/sonner";
+import serifItalicLatin from "@fontsource/instrument-serif/files/instrument-serif-latin-400-italic.woff2?url";
+import interLatin from "@fontsource-variable/inter/files/inter-latin-opsz-normal.woff2?url";
 import type { QueryClient } from "@tanstack/react-query";
 import {
 	createRootRouteWithContext,
@@ -12,6 +14,15 @@ import type { TRPCOptionsProxy } from "@trpc/tanstack-react-query";
 import Header from "../components/header";
 
 import appCss from "../index.css?url";
+
+// Headlines use both faces above the fold; preloading them avoids a visible font swap.
+const fontPreloads = [interLatin, serifItalicLatin].map((href) => ({
+	rel: "preload",
+	href,
+	as: "font",
+	type: "font/woff2",
+	crossOrigin: "anonymous" as const,
+}));
 
 export interface RouterAppContext {
 	trpc: TRPCOptionsProxy<AppRouter>;
@@ -29,6 +40,10 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 				content: "width=device-width, initial-scale=1",
 			},
 			{
+				name: "theme-color",
+				content: "#fafaf8",
+			},
+			{
 				title: "printclub — Your photos. Made to keep.",
 			},
 			{
@@ -38,6 +53,7 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 			},
 		],
 		links: [
+			...fontPreloads,
 			{
 				rel: "stylesheet",
 				href: appCss,

@@ -5,6 +5,7 @@ import { Elysia } from "elysia";
 
 import { createContext } from "./context";
 import { ENV } from "./env.server";
+import { publicServerErrorHandler } from "./public-error";
 import { getClientIp, parseTrustedProxyIps } from "./rate-limit";
 import { handleResendWebhook } from "./resend-webhook";
 import { auth, edgeRateLimitGuard } from "./services";
@@ -19,6 +20,19 @@ if (!Number.isInteger(port) || port < 1 || port > 65_535) {
 }
 
 new Elysia()
+	.use(
+		cors({
+			origin: ENV.CORS_ORIGIN,
+			methods: ["GET", "POST", "OPTIONS"],
+			allowedHeaders: [
+				"Content-Type",
+				"Authorization",
+				"X-Printclub-Turnstile",
+			],
+			exposeHeaders: ["Retry-After", "RateLimit-Limit"],
+			credentials: true,
+		}),
+	)
 	.onRequest(async ({ request, server, set, status }) => {
 		const contentLength = Number(request.headers.get("content-length") ?? 0);
 		if (Number.isFinite(contentLength) && contentLength > maxRequestBodyBytes) {
@@ -60,18 +74,7 @@ new Elysia()
 				"max-age=31536000; includeSubDomains";
 		}
 	})
-	.use(
-		cors({
-			origin: ENV.CORS_ORIGIN,
-			methods: ["GET", "POST", "OPTIONS"],
-			allowedHeaders: [
-				"Content-Type",
-				"Authorization",
-				"X-Printclub-Turnstile",
-			],
-			credentials: true,
-		}),
-	)
+	.onError(publicServerErrorHandler)
 	.post("/webhooks/resend", ({ request }) => handleResendWebhook(request))
 	.all("/api/auth/*", async (context) => {
 		const { request, status } = context;
@@ -99,6 +102,15 @@ new Elysia()
 			router: appRouter,
 			req: context.request,
 			createContext: () => createContext({ context }),
+			onError: ({ error, path, type }) => {
+				if (error.code === "INTERNAL_SERVER_ERROR") {
+					console.error("[tRPC] Unexpected request failure", {
+						code: error.code,
+						path,
+						type,
+					});
+				}
+			},
 		});
 		return res;
 	})

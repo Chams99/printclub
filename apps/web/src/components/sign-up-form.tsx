@@ -2,7 +2,7 @@ import { Button } from "@PhotoPrinting/ui/components/button";
 import { Input } from "@PhotoPrinting/ui/components/input";
 import { Label } from "@PhotoPrinting/ui/components/label";
 import { useForm } from "@tanstack/react-form";
-import { CircleAlert, CircleCheck } from "lucide-react";
+import { CircleAlert, CircleCheck, Loader2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import z from "zod";
@@ -12,7 +12,7 @@ import { getAuthErrorMessage, getFormErrorMessage } from "@/lib/form-error";
 import { ENV } from "@/runtime-env";
 
 import GoogleSignInButton from "./google-sign-in-button";
-import Loader from "./loader";
+import PasswordInput from "./password-input";
 import { TurnstileChallenge, useTurnstile } from "./turnstile-challenge";
 
 export default function SignUpForm({
@@ -22,7 +22,6 @@ export default function SignUpForm({
 	onSwitchToSignIn: () => void;
 	returnTo?: string;
 }) {
-	const { isPending } = authClient.useSession();
 	const [formError, setFormError] = useState<string | null>(null);
 	const [successTitle, setSuccessTitle] = useState("Next step");
 	const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -32,6 +31,10 @@ export default function SignUpForm({
 	const [showValidationErrors, setShowValidationErrors] = useState(false);
 	const formErrorRef = useRef<HTMLDivElement>(null);
 	const turnstile = useTurnstile("sign-up");
+
+	function focusFormError() {
+		window.requestAnimationFrame(() => formErrorRef.current?.focus());
+	}
 
 	const form = useForm({
 		defaultValues: {
@@ -46,6 +49,7 @@ export default function SignUpForm({
 						? "The security check could not load. Check your connection and try again."
 						: "Complete the security check before creating your account.",
 				);
+				focusFormError();
 				return;
 			}
 			try {
@@ -74,40 +78,42 @@ export default function SignUpForm({
 							setSuccessTitle(
 								isLocalDevelopment
 									? "Development verification"
-									: "Check your inbox",
+									: "Check your email or sign in",
 							);
 							setSuccessMessage(
 								isLocalDevelopment
-									? "This local build keeps verification links in the API terminal. In production, check your inbox. If you use Google for this address, continue with Google above."
-									: "Check your inbox and spam folder for a verification link. If you use Google for this address, continue with Google above.",
+									? "New account verification links appear in the API terminal. If you already have a printclub account, sign in instead; unverified accounts can request a fresh link. Google accounts should use Google sign-in."
+									: "If this address is new, check your inbox and spam folder for a verification link. If you already have a printclub account, sign in instead; unverified accounts can request a fresh link. Google accounts should use Google sign-in.",
 							);
 							toast.success(
 								isLocalDevelopment
-									? "Use Google or check the API terminal"
-									: "Check your inbox or continue with Google",
+									? "Check the API terminal or sign in"
+									: "Check your inbox or sign in",
 							);
 						},
 						onError: (error) => {
+							setSuccessMessage(null);
 							const message = getAuthErrorMessage(
 								error,
 								"We couldn't create your account. Check your details and try again.",
 							);
 							setFormError(message);
 							toast.error(message);
-							window.requestAnimationFrame(() => formErrorRef.current?.focus());
+							focusFormError();
 						},
 					},
 				);
 				turnstile.reset();
 			} catch (error) {
 				turnstile.reset();
+				setSuccessMessage(null);
 				const message = getAuthErrorMessage(
 					error,
 					"Connection problem. Check your internet connection, then try again.",
 				);
 				setFormError(message);
 				toast.error(message);
-				window.requestAnimationFrame(() => formErrorRef.current?.focus());
+				focusFormError();
 			}
 		},
 		validators: {
@@ -159,10 +165,6 @@ export default function SignUpForm({
 		return false;
 	}
 
-	if (isPending) {
-		return <Loader />;
-	}
-
 	return (
 		<div className="auth-form-card">
 			<div className="auth-form-card__heading">
@@ -200,7 +202,7 @@ export default function SignUpForm({
 				returnTo={returnTo}
 				onError={(message) => {
 					setFormError(message);
-					window.requestAnimationFrame(() => formErrorRef.current?.focus());
+					focusFormError();
 				}}
 			/>
 
@@ -214,11 +216,7 @@ export default function SignUpForm({
 				className="auth-form-card__fields"
 			>
 				<div
-					className={
-						showValidationErrors
-							? "auth-form-card__field-wrap has-error"
-							: "auth-form-card__field-wrap"
-					}
+					className={`auth-form-card__field-wrap${fieldErrors.name ? " has-error" : ""}`}
 				>
 					<form.Field name="name" key={`name-${fieldErrors.name ?? "valid"}`}>
 						{(field) => (
@@ -246,13 +244,16 @@ export default function SignUpForm({
 									onBlur={field.handleBlur}
 									onChange={(e) => {
 										field.handleChange(e.target.value);
+										setFormError(null);
+										setSuccessMessage(null);
 										setFieldErrors((current) => ({
 											...current,
 											name: undefined,
 										}));
 									}}
 								/>
-								{!showValidationErrors && field.state.meta.errors.length ? (
+								{fieldErrors.name ||
+								(!showValidationErrors && field.state.meta.errors.length) ? (
 									<p
 										id={`${field.name}-error`}
 										className="auth-form-card__error"
@@ -268,24 +269,10 @@ export default function SignUpForm({
 							</div>
 						)}
 					</form.Field>
-					{showValidationErrors ? (
-						<p
-							id="name-error"
-							className="auth-form-card__error"
-							aria-live="polite"
-						>
-							<CircleAlert aria-hidden="true" />
-							<span>Enter at least 2 characters.</span>
-						</p>
-					) : null}
 				</div>
 
 				<div
-					className={
-						showValidationErrors
-							? "auth-form-card__field-wrap has-error"
-							: "auth-form-card__field-wrap"
-					}
+					className={`auth-form-card__field-wrap${fieldErrors.email ? " has-error" : ""}`}
 				>
 					<form.Field
 						name="email"
@@ -318,13 +305,16 @@ export default function SignUpForm({
 									onBlur={field.handleBlur}
 									onChange={(e) => {
 										field.handleChange(e.target.value);
+										setFormError(null);
+										setSuccessMessage(null);
 										setFieldErrors((current) => ({
 											...current,
 											email: undefined,
 										}));
 									}}
 								/>
-								{!showValidationErrors && field.state.meta.errors.length ? (
+								{fieldErrors.email ||
+								(!showValidationErrors && field.state.meta.errors.length) ? (
 									<p
 										id={`${field.name}-error`}
 										className="auth-form-card__error"
@@ -340,24 +330,10 @@ export default function SignUpForm({
 							</div>
 						)}
 					</form.Field>
-					{showValidationErrors ? (
-						<p
-							id="email-error"
-							className="auth-form-card__error"
-							aria-live="polite"
-						>
-							<CircleAlert aria-hidden="true" />
-							<span>Enter a valid email address.</span>
-						</p>
-					) : null}
 				</div>
 
 				<div
-					className={
-						showValidationErrors
-							? "auth-form-card__field-wrap has-error"
-							: "auth-form-card__field-wrap"
-					}
+					className={`auth-form-card__field-wrap${fieldErrors.password ? " has-error" : ""}`}
 				>
 					<form.Field
 						name="password"
@@ -372,10 +348,9 @@ export default function SignUpForm({
 								}
 							>
 								<Label htmlFor={field.name}>Password</Label>
-								<Input
+								<PasswordInput
 									id={field.name}
 									name={field.name}
-									type="password"
 									autoComplete="new-password"
 									aria-invalid={Boolean(
 										fieldErrors.password || field.state.meta.errors.length,
@@ -389,13 +364,16 @@ export default function SignUpForm({
 									onBlur={field.handleBlur}
 									onChange={(e) => {
 										field.handleChange(e.target.value);
+										setFormError(null);
+										setSuccessMessage(null);
 										setFieldErrors((current) => ({
 											...current,
 											password: undefined,
 										}));
 									}}
 								/>
-								{!showValidationErrors && field.state.meta.errors.length ? (
+								{fieldErrors.password ||
+								(!showValidationErrors && field.state.meta.errors.length) ? (
 									<p
 										id={`${field.name}-error`}
 										className="auth-form-card__error"
@@ -411,16 +389,6 @@ export default function SignUpForm({
 							</div>
 						)}
 					</form.Field>
-					{showValidationErrors ? (
-						<p
-							id="password-error"
-							className="auth-form-card__error"
-							aria-live="polite"
-						>
-							<CircleAlert aria-hidden="true" />
-							<span>Password must be at least 8 characters.</span>
-						</p>
-					) : null}
 				</div>
 
 				<TurnstileChallenge challenge={turnstile} />
@@ -444,7 +412,14 @@ export default function SignUpForm({
 								}
 							}}
 						>
-							{isSubmitting ? "Submitting…" : "Sign Up"}
+							{isSubmitting ? (
+								<>
+									<Loader2 className="button-spinner" aria-hidden="true" />
+									Creating account…
+								</>
+							) : (
+								"Create account"
+							)}
 						</button>
 					)}
 				</form.Subscribe>
@@ -456,7 +431,7 @@ export default function SignUpForm({
 					onClick={onSwitchToSignIn}
 					className="auth-form-card__switch-button"
 				>
-					Already have an account? Sign In
+					Already have an account? Sign in
 				</Button>
 			</div>
 		</div>

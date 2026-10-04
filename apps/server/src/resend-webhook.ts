@@ -1,8 +1,7 @@
 import { suppressEmail } from "./email-suppression";
 import { ENV } from "./env.server";
+import { verifyResendSignature } from "./resend-signature";
 import { db } from "./services";
-
-const maxWebhookAgeMs = 5 * 60 * 1_000;
 
 type ResendEvent = {
 	type?: string;
@@ -11,56 +10,6 @@ type ResendEvent = {
 		bounce?: { type?: string; subType?: string; message?: string };
 	};
 };
-
-function decodeBase64(value: string) {
-	const decoded = atob(value);
-	return Uint8Array.from(decoded, (character) => character.charCodeAt(0));
-}
-
-async function verifySignature(
-	payload: string,
-	headers: Headers,
-	secret: string,
-) {
-	const id = headers.get("svix-id");
-	const timestamp = headers.get("svix-timestamp");
-	const signature = headers.get("svix-signature");
-	if (!id || !timestamp || !signature) return false;
-	const timestampMs = Number(timestamp) * 1_000;
-	if (
-		!Number.isFinite(timestampMs) ||
-		Math.abs(Date.now() - timestampMs) > maxWebhookAgeMs
-	) {
-		return false;
-	}
-	if (!secret.startsWith("whsec_")) return false;
-	const key = await crypto.subtle.importKey(
-		"raw",
-		decodeBase64(secret.slice("whsec_".length)),
-		{ name: "HMAC", hash: "SHA-256" },
-		false,
-		["sign"],
-	);
-	const signedPayload = new TextEncoder().encode(
-		`${id}.${timestamp}.${payload}`,
-	);
-	for (const candidate of signature.split(" ")) {
-		const [version, value] = candidate.split(",", 2);
-		if (
-			version === "v1" &&
-			value &&
-			(await crypto.subtle.verify(
-				"HMAC",
-				key,
-				decodeBase64(value),
-				signedPayload,
-			))
-		) {
-			return true;
-		}
-	}
-	return false;
-}
 
 function eventEmails(event: ResendEvent) {
 	if (!["email.bounced", "email.complained"].includes(event.type ?? "")) {
@@ -87,7 +36,7 @@ export async function handleResendWebhook(request: Request) {
 	}
 	const payload = await request.text();
 	if (
-		!(await verifySignature(
+		!(await verifyResendSignature(
 			payload,
 			request.headers,
 			ENV.RESEND_WEBHOOK_SECRET,
@@ -97,7 +46,10 @@ export async function handleResendWebhook(request: Request) {
 	}
 	let event: ResendEvent;
 	try {
-		event = JSON.parse(payload) as ResendEvent;
+		const parsed: unknown = JSON.parse(payload);
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+			return new Response("Invalid webhook", { status: 400 });
+		event = parsed as ResendEvent;
 	} catch {
 		return new Response("Invalid webhook", { status: 400 });
 	}

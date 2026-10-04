@@ -1,7 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowUpRight } from "lucide-react";
 
 import { templateDefinitions } from "@/lib/creation-draft";
+import { responsiveImage } from "@/lib/images";
 
 export const Route = createFileRoute("/templates")({
 	head: () => ({
@@ -20,7 +21,7 @@ export const Route = createFileRoute("/templates")({
 function TemplatesPage() {
 	return (
 		<main className="template-browser-page" id="main-content">
-			<section className="template-browser-v2">
+			<section className="template-browser-v2 enter-stagger">
 				<p className="eyebrow eyebrow--blue">Start with a feeling</p>
 				<h1>
 					A thoughtful beginning
@@ -33,12 +34,18 @@ function TemplatesPage() {
 				</p>
 				<div className="template-browser-grid-v2">
 					{templateDefinitions.map((template) => (
-						<article className="template-browser-card-v2" key={template.id}>
+						<article
+							className="template-browser-card-v2 reveal-on-scroll"
+							key={template.id}
+						>
 							<img
-								src={template.image}
+								{...responsiveImage(
+									template.image,
+									"(max-width: 760px) calc(100vw - 2rem), (max-width: 900px) 50vw, 420px",
+								)}
 								alt={`${template.category} template preview`}
-								width="1536"
-								height="1024"
+								loading="lazy"
+								decoding="async"
 							/>
 							<div className="template-browser-card-v2__body">
 								<span className="eyebrow eyebrow--blue">
@@ -46,19 +53,20 @@ function TemplatesPage() {
 								</span>
 								<h2>{template.label}</h2>
 								<p>{template.description}</p>
-								<a
+								<Link
 									className="text-link-v2"
-									href={`/create?template=${template.id}`}
+									to="/create"
+									search={{ template: template.id }}
 								>
 									Use template <ArrowUpRight aria-hidden="true" />
-								</a>
+								</Link>
 							</div>
 						</article>
 					))}
 				</div>
-				<a className="text-link-v2" href="/">
+				<Link className="text-link-v2" to="/">
 					Back to the homepage <ArrowUpRight aria-hidden="true" />
-				</a>
+				</Link>
 			</section>
 		</main>
 	);

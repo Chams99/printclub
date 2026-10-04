@@ -42,7 +42,7 @@ const steps = [
 function HowItWorksPage() {
 	return (
 		<main className="how-it-works-page" id="main-content">
-			<section className="how-it-works-hero-v2">
+			<section className="how-it-works-hero-v2 enter-stagger">
 				<p className="eyebrow eyebrow--blue">A calmer way to create</p>
 				<h1>
 					From camera roll
@@ -59,7 +59,7 @@ function HowItWorksPage() {
 			</section>
 			<section className="how-it-works-steps-v2" aria-label="Three steps">
 				{steps.map(({ number, icon: Icon, title, copy }) => (
-					<article key={number}>
+					<article key={number} className="reveal-on-scroll">
 						<span>{number}</span>
 						<Icon aria-hidden="true" />
 						<h2>{title}</h2>

@@ -48,6 +48,9 @@
     },
     "db:down": {
       "cache": false
+    },
+    "seed:dev-user": {
+      "cache": false
     }
   },
   "globalEnv": [
