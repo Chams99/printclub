@@ -1,0 +1,79 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: api
+    command: ["bun", "apps/server/dist/index.mjs"]
+    env_file:
+      - path: /etc/dokploy/private-runtime/printclub/api.runtime.env
+        format: raw
+    expose:
+      - "3000"
+    healthcheck:
+      test:
+        - CMD
+        - bun
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 6
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.printclub-api.rule=Host(`api.printclub.chames.tn`)
+      - traefik.http.routers.printclub-api.entrypoints=websecure
+      - traefik.http.routers.printclub-api.tls=true
+      - traefik.http.routers.printclub-api.tls.certresolver=letsencrypt
+      - traefik.http.routers.printclub-api.middlewares=default-chain@file
+      - traefik.http.services.printclub-api.loadbalancer.server.port=3000
+    networks:
+      printclub-internal:
+        aliases:
+          - printclub-api
+      dokploy-network: {}
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: web
+      args:
+        VITE_SERVER_URL: ${VITE_SERVER_URL:?Set the existing public API URL in Dokploy Compose variables}
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+        VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
+    command: ["bun", "apps/web/start.mjs"]
+    expose:
+      - "3001"
+    healthcheck:
+      test:
+        - CMD
+        - bun
+        - -e
+        - "fetch('http://127.0.0.1:3001/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 6
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.printclub-web.rule=Host(`printclub.chames.tn`)
+      - traefik.http.routers.printclub-web.entrypoints=websecure
+      - traefik.http.routers.printclub-web.tls=true
+      - traefik.http.routers.printclub-web.tls.certresolver=letsencrypt
+      - traefik.http.routers.printclub-web.middlewares=default-chain@file
+      - traefik.http.services.printclub-web.loadbalancer.server.port=3001
+    networks:
+      - dokploy-network
+    restart: unless-stopped
+
+networks:
+  printclub-internal:
+    external: true
+    name: printclub_internal
+  dokploy-network:
+    external: true
