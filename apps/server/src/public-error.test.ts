@@ -1,11 +1,8 @@
-import { cors } from "@elysiajs/cors";
 import { describe, expect, it } from "bun:test";
+import { cors } from "@elysiajs/cors";
 import { Elysia, status } from "elysia";
 
-import {
-	mapPublicServerError,
-	publicServerErrorHandler,
-} from "./public-error";
+import { mapPublicServerError, publicServerErrorHandler } from "./public-error";
 
 describe("mapPublicServerError", () => {
 	it("returns a stable internal error without backend details", () => {
@@ -45,10 +42,12 @@ describe("mapPublicServerError", () => {
 		expect(
 			mapPublicServerError({ code: "PARSE", status: 400 })?.body.code,
 		).toBe("PARSE_ERROR");
-		expect(mapPublicServerError({ code: "VALIDATION", status: 200 })?.status).toBe(
-			422,
+		expect(
+			mapPublicServerError({ code: "VALIDATION", status: 200 })?.status,
+		).toBe(422);
+		expect(mapPublicServerError({ code: "PARSE", status: 200 })?.status).toBe(
+			400,
 		);
-		expect(mapPublicServerError({ code: "PARSE", status: 200 })?.status).toBe(400);
 	});
 
 	it("leaves native not-found and explicit status responses alone", () => {

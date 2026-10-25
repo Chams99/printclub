@@ -80,8 +80,9 @@ function OrdersPage() {
 						<PackageCheck aria-hidden="true" />
 						<h2>No requests yet</h2>
 						<p>
-							Make a design in the studio and send it to the print studio for
-							review.
+							Make a design and submit a demo request to see its reference in
+							this browser. The request is not saved for staff review, emailed,
+							or sent to a printer.
 						</p>
 						<Link className="button-v2 button-v2--primary" to="/create">
 							Start a new print <ArrowUpRight aria-hidden="true" />

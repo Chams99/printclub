@@ -1,22 +1,22 @@
 {
-  "name": "@PhotoPrinting/auth",
-  "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
-    "./*": "./src/*.ts"
-  },
-  "scripts": {
-    "check-types": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@PhotoPrinting/db": "workspace:*",
-    "@better-auth/drizzle-adapter": "1.7.5",
-    "better-auth": "catalog:",
-    "drizzle-orm": "catalog:",
-    "zod": "catalog:"
-  },
-  "devDependencies": {
-    "@PhotoPrinting/config": "workspace:*",
-    "typescript": "catalog:"
-  }
+	"name": "@PhotoPrinting/auth",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./*": "./src/*.ts"
+	},
+	"scripts": {
+		"check-types": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@PhotoPrinting/db": "workspace:*",
+		"@better-auth/drizzle-adapter": "1.7.5",
+		"better-auth": "catalog:",
+		"drizzle-orm": "catalog:",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@PhotoPrinting/config": "workspace:*",
+		"typescript": "catalog:"
+	}
 }

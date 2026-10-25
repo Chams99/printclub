@@ -1,7 +1,24 @@
-import { jsonb, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+	integer,
+	jsonb,
+	pgEnum,
+	pgTable,
+	text,
+	timestamp,
+	uuid,
+} from "drizzle-orm/pg-core";
 
-export const assetStatus = pgEnum("asset_status", ["uploaded", "processing", "ready", "failed"]);
-export const projectVisibility = pgEnum("project_visibility", ["private", "link", "team"]);
+export const assetStatus = pgEnum("asset_status", [
+	"uploaded",
+	"processing",
+	"ready",
+	"failed",
+]);
+export const projectVisibility = pgEnum("project_visibility", [
+	"private",
+	"link",
+	"team",
+]);
 export const orderStatus = pgEnum("order_status", [
 	"requested",
 	"reviewing",
