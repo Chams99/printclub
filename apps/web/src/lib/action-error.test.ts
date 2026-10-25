@@ -24,7 +24,10 @@ describe("action errors", () => {
 		expect(message).not.toContain("secret-password");
 		expect(message).not.toContain("connection");
 		expect(
-			actionErrorMessage({ status: 503, message: "private upstream detail" }, "request"),
+			actionErrorMessage(
+				{ status: 503, message: "private upstream detail" },
+				"request",
+			),
 		).toContain("could not process this request");
 	});
 	test("expired sessions, quotas, and storage failures explain recovery", () => {

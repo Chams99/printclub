@@ -49,7 +49,7 @@ export const appRouter = router({
 				orderId,
 				status: "received" as const,
 				message:
-					"Your demo request is ready for review. No payment has been taken.",
+					"Demo request received. It is not saved for staff review or sent by email. No payment has been taken.",
 			};
 		}),
 	privateData: protectedProcedure.query(({ ctx }) => {
