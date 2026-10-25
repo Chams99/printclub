@@ -1384,7 +1384,7 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 						disabled={!hydrated || requestBusy || saveBusy}
 					>
 						<Send data-icon="inline-start" aria-hidden="true" />
-						Request review
+						Submit demo request
 					</Button>
 				</div>
 			</header>
@@ -2099,7 +2099,7 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 					<p>
 						{authPrompt === "export"
 							? "Sign in to export your design or copy its browser link."
-							: "Sign in to send this design for a studio review."}
+							: "Sign in to submit a demo request for this design."}
 					</p>
 					<div className="studio-dialog__actions">
 						<Button
@@ -2138,10 +2138,12 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 						<X aria-hidden="true" />
 					</button>
 					<span className="studio-app__eyebrow">One last detail</span>
-					<h2 id="request-title">Request a studio review</h2>
+					<h2 id="request-title">Submit a demo request</h2>
 					<p>
-						This sends a demo request to the API and keeps its reference in this
-						browser. No payment, production order, or fulfillment is created.
+						Your contact details are sent to the API. It returns a demo
+						reference that this browser keeps; the request is not saved for
+						staff review or sent by email. No payment, production order, or
+						fulfillment is created.
 					</p>
 					{requestError ? (
 						<p

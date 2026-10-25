@@ -1,7 +1,6 @@
-import { createHash, randomUUID } from "node:crypto";
-
 import type { Database } from "@PhotoPrinting/db";
 import { rateLimit } from "@PhotoPrinting/db/schema/auth";
+import { createHash, randomUUID } from "node:crypto";
 import { and, like, lt, or, sql } from "drizzle-orm";
 
 type RateLimitInput = {
@@ -152,9 +151,7 @@ const verificationDailyMax = 5;
 const verificationGlobalDailyMax = 80;
 
 function verificationEmailKey(email: string) {
-	return createHash("sha256")
-		.update(email.trim().toLowerCase())
-		.digest("hex");
+	return createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
 }
 
 /**

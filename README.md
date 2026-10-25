@@ -1,6 +1,6 @@
 # PhotoPrinting
 
-PhotoPrinting is a print-shop and design-studio demo built with [TanStack Start](https://tanstack.com/start), React, Motion, Elysia, tRPC, Drizzle, PostgreSQL, and Better Auth. It is designed to demonstrate a complete product workflow before a real print partner or payment provider is connected.
+PhotoPrinting is a print-shop and design-studio demo built with [TanStack Start](https://tanstack.com/start), React, Motion, Elysia, tRPC, Drizzle, PostgreSQL, and Better Auth. It demonstrates a complete demo flow for browsing products, editing and exporting designs in the browser, and submitting a clearly labelled sample request. A real print partner and payment provider are not connected.
 
 ## Features
 
@@ -19,7 +19,7 @@ PhotoPrinting is a print-shop and design-studio demo built with [TanStack Start]
 
 ## Product workflow
 
-The storefront at `/` introduces five printable formats with original WebP demo photography, template filters, an interactive format gallery, a scroll-led photo story, an FAQ, footer navigation, and reduced-motion fallbacks. `/formats/:productId` provides a product detail view and `/templates` provides editable starting points. `/studio` is a guest-first design surface where a visitor can upload a JPEG, PNG, or WebP, add text and shapes, move and crop layers, change the canvas, undo/redo, recover a saved design, and download an SVG preview. The request form intentionally does not charge or promise delivery; it sends a demo order request to the API when the server is available and falls back to a browser-local request when it is not.
+The storefront at `/` introduces five printable formats with original WebP demo photography, template filters, an interactive format gallery, a scroll-led photo story, an FAQ, footer navigation, and reduced-motion fallbacks. `/formats/:productId` provides a product detail view and `/templates` provides editable starting points. `/studio` is a guest-first design surface where a visitor can upload a JPEG, PNG, or WebP, add text and shapes, move and crop layers, change the canvas, undo/redo, recover a saved design, and download an SVG preview. Photos and editable drafts stay in the current browser. The request form submits a clearly labelled demo request to the API and saves its returned reference in this browser; it does not create an offline request if the API is unavailable. The server does not store a review queue or send email.
 
 `/orders` lists requests saved in the current browser. `/staff` is a local-only operations preview and must be replaced with a server-authorized staff route before production use. Cloud projects, private object storage, image processing, live collaboration, payments, and fulfillment are planned follow-up milestones.
 

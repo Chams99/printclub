@@ -1,24 +1,24 @@
 {
-  "name": "@PhotoPrinting/api",
-  "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
-    "./*": "./src/*.ts",
-    "./domain/*": "./src/domain/*.ts"
-  },
-  "scripts": {
-    "check-types": "tsc --noEmit",
-    "test": "bun test"
-  },
-  "dependencies": {
-    "@PhotoPrinting/auth": "workspace:*",
-    "@PhotoPrinting/db": "workspace:*",
-    "@trpc/client": "catalog:",
-    "@trpc/server": "catalog:",
-    "zod": "catalog:"
-  },
-  "devDependencies": {
-    "@PhotoPrinting/config": "workspace:*",
-    "typescript": "catalog:"
-  }
+	"name": "@PhotoPrinting/api",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./*": "./src/*.ts",
+		"./domain/*": "./src/domain/*.ts"
+	},
+	"scripts": {
+		"check-types": "tsc --noEmit",
+		"test": "bun test"
+	},
+	"dependencies": {
+		"@PhotoPrinting/auth": "workspace:*",
+		"@PhotoPrinting/db": "workspace:*",
+		"@trpc/client": "catalog:",
+		"@trpc/server": "catalog:",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@PhotoPrinting/config": "workspace:*",
+		"typescript": "catalog:"
+	}
 }

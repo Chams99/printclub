@@ -1,10 +1,10 @@
 {
-  "extends": "@PhotoPrinting/config/tsconfig.base.json",
-  "compilerOptions": {
-    "noEmit": true,
-    "paths": {
-      "@/*": ["./src/*"]
-    },
-    "jsx": "react-jsx"
-  }
+	"extends": "@PhotoPrinting/config/tsconfig.base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"paths": {
+			"@/*": ["./src/*"]
+		},
+		"jsx": "react-jsx"
+	}
 }

@@ -20,22 +20,19 @@ const steps = [
 		number: "01",
 		icon: Image,
 		title: "Bring the moment",
-		copy:
-			"Choose a photo from your device or start with an editable template. Guests can explore before creating an account.",
+		copy: "Choose a photo from your device or start with an editable template. Guests can explore before creating an account.",
 	},
 	{
 		number: "02",
 		icon: Layers3,
 		title: "Make it yours",
-		copy:
-			"Crop, arrange, add a note, and see the safe area and effective resolution while you compose.",
+		copy: "Crop, arrange, add a note, and see the safe area and effective resolution while you compose.",
 	},
 	{
 		number: "03",
 		icon: PackageCheck,
 		title: "Keep the result",
-		copy:
-			"Save the project in this browser, download a preview, or send a clearly labelled demo request. No payment is taken.",
+		copy: "Save the project in this browser, download a preview, or send a clearly labelled demo request. No payment is taken.",
 	},
 ] as const;
 
@@ -71,9 +68,9 @@ function HowItWorksPage() {
 				<p className="eyebrow eyebrow--blue">Designed for confidence</p>
 				<h2>See the crop before it becomes a print.</h2>
 				<p>
-					The studio keeps print proportions, safe areas, and image quality close to
-					the work. You can return to setup, change the format, or keep refining in
-					the editor.
+					The studio keeps print proportions, safe areas, and image quality
+					close to the work. You can return to setup, change the format, or keep
+					refining in the editor.
 				</p>
 				<Link className="text-link-v2" to="/formats">
 					Explore formats <ArrowUpRight aria-hidden="true" />

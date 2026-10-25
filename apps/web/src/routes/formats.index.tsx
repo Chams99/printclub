@@ -37,8 +37,8 @@ function FormatsPage() {
 					<em>the good ones.</em>
 				</h1>
 				<p className="formats-index-v2__intro">
-					Every format opens the same print-aware studio. Pick the proportion that
-					fits the moment, then make the design yours.
+					Every format opens the same print-aware studio. Pick the proportion
+					that fits the moment, then make the design yours.
 				</p>
 				<div className="formats-index-grid-v2">
 					{catalog.map((product) => (
@@ -67,7 +67,8 @@ function FormatsPage() {
 								<p>{product.description}</p>
 								<ul>
 									<li>
-										<Check aria-hidden="true" /> {product.widthMm} × {product.heightMm} mm
+										<Check aria-hidden="true" /> {product.widthMm} ×{" "}
+										{product.heightMm} mm
 									</li>
 									<li>
 										<Check aria-hidden="true" /> {product.finish}
@@ -86,7 +87,8 @@ function FormatsPage() {
 				</div>
 				<div className="formats-index-v2__footer">
 					<p>
-						Not sure where to begin? The classic print is the calmest first step.
+						Not sure where to begin? The classic print is the calmest first
+						step.
 					</p>
 					<Link
 						className="button-v2 button-v2--primary"

@@ -7,11 +7,14 @@ import { createContext } from "./context";
 import { ENV } from "./env.server";
 import { publicServerErrorHandler } from "./public-error";
 import { getClientIp, parseTrustedProxyIps } from "./rate-limit";
+import {
+	createServerListenOptions,
+	maxRequestBodyBytes,
+} from "./request-body-limit";
 import { handleResendWebhook } from "./resend-webhook";
 import { auth, edgeRateLimitGuard } from "./services";
 import { verifyTurnstileForRequest } from "./turnstile";
 
-const maxRequestBodyBytes = 2 * 1024 * 1024;
 const port = Number(process.env.PORT ?? 3000);
 const hostname = process.env.HOST ?? "0.0.0.0";
 
@@ -116,6 +119,6 @@ new Elysia()
 	})
 	.get("/health", () => ({ status: "ok" }))
 	.get("/", () => "OK")
-	.listen({ hostname, port }, () => {
+	.listen(createServerListenOptions(hostname, port), () => {
 		console.log(`Server is running on http://${hostname}:${port}`);
 	});
