@@ -1,0 +1,2 @@
+# Keep Unix line endings on every platform, as Biome expects.
+* text=auto eol=lf

@@ -267,7 +267,7 @@ export function StudioEditor({ draftId }: { draftId?: string } = {}) {
 
 	// Autosave keeps the design in this browser only (IndexedDB, via
 	// saveCreationDraft); nothing is sent to the server. It is debounced, retried
-	// with backoff, and flushed when the tab is hidden, as AGENTS.md requires.
+	// with backoff, and flushed when the tab is hidden so recent edits survive.
 	const runAutosave = useEffectEvent(async (attempt: number) => {
 		try {
 			await saveGuest("auto");

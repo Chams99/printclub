@@ -15,6 +15,9 @@ import Header from "../components/header";
 
 import appCss from "../index.css?url";
 
+// Link previews need absolute URLs.
+const siteUrl = "https://printclub.chames.tn";
+
 // Headlines use both faces above the fold; preloading them avoids a visible font swap.
 const fontPreloads = [interLatin, serifItalicLatin].map((href) => ({
 	rel: "preload",
@@ -51,6 +54,23 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 				content:
 					"Turn the camera roll into a beautiful photo print with the printclub studio.",
 			},
+			// Link previews in chats and social posts.
+			{ property: "og:type", content: "website" },
+			{ property: "og:site_name", content: "printclub" },
+			{
+				property: "og:title",
+				content: "printclub — Your photos. Made to keep.",
+			},
+			{
+				property: "og:description",
+				content:
+					"Turn the camera roll into a beautiful photo print with the printclub studio.",
+			},
+			{ property: "og:url", content: siteUrl },
+			{ property: "og:image", content: `${siteUrl}/og-image.jpg` },
+			{ property: "og:image:width", content: "1200" },
+			{ property: "og:image:height", content: "630" },
+			{ name: "twitter:card", content: "summary_large_image" },
 		],
 		links: [
 			...fontPreloads,
@@ -58,11 +78,14 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 				rel: "stylesheet",
 				href: appCss,
 			},
+			{ rel: "icon", href: "/favicon.ico", sizes: "32x32" },
 			{
 				rel: "icon",
 				type: "image/svg+xml",
 				href: "/printclub-mark.svg",
 			},
+			{ rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
+			{ rel: "manifest", href: "/site.webmanifest" },
 		],
 	}),
 
