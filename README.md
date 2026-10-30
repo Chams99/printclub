@@ -1,21 +1,13 @@
-# PhotoPrinting
+# printclub
 
-PhotoPrinting is a print-shop and design-studio demo built with [TanStack Start](https://tanstack.com/start), React, Motion, Elysia, tRPC, Drizzle, PostgreSQL, and Better Auth. It demonstrates a complete demo flow for browsing products, editing and exporting designs in the browser, and submitting a clearly labelled sample request. A real print partner and payment provider are not connected.
+printclub is a print-shop and design-studio demo built with [TanStack Start](https://tanstack.com/start), React, Motion, Elysia, tRPC, Drizzle, PostgreSQL, and Better Auth. It demonstrates a complete demo flow for browsing products, editing and exporting designs in the browser, and submitting a clearly labelled sample request. A real print partner and payment provider are not connected. Live at [printclub.chames.tn](https://printclub.chames.tn).
 
-## Features
+## Stack
 
-- **TypeScript** - For type safety and improved developer experience
-- **TanStack Start** - SSR framework with TanStack Router
-- **TailwindCSS** - Utility-first CSS for rapid UI development
-- **Shared UI package** - shadcn/ui primitives live in `packages/ui`
-- **Elysia** - Type-safe, high-performance framework
-- **tRPC** - End-to-end type-safe APIs
-- **Bun** - Runtime environment
-- **Drizzle** - TypeScript-first ORM
-- **PostgreSQL** - Database engine
-- **Authentication** - Better-Auth
-- **Biome** - Linting and formatting
-- **Turborepo** - Optimized monorepo build system
+- **Web:** TanStack Start (React, server rendering, TanStack Router), Tailwind CSS 4 and shared shadcn/ui primitives in `packages/ui`
+- **API:** Elysia with tRPC, Better Auth for accounts and Google sign-in, Resend for verification email
+- **Data:** PostgreSQL through Drizzle ORM
+- **Tooling:** Bun, Turborepo, Biome, and Varlock for typed environment schemas
 
 ## Product workflow
 
@@ -109,14 +101,14 @@ Google sign-in is optional. To enable the button on `/login`, set `VITE_GOOGLE_C
 
 Email/password accounts require verification before sign-in. Production needs a transactional email provider; the deployment template uses Resend through `RESEND_API_KEY` and `EMAIL_FROM`. The API key remains server-only.
 
-## Git Hooks and Formatting
+## Checks
 
-- Run checks: `bun run check`
+- `bun run check` for Biome formatting and linting, `bun run check-types` for TypeScript, `bun run test` for the tests
 
 ## Project Structure
 
 ```
-PhotoPrinting/
+printclub/
 ├── apps/
 │   ├── web/         # Frontend application (React + TanStack Start)
 │   └── server/      # Backend API (Elysia, TRPC)
@@ -135,7 +127,6 @@ PhotoPrinting/
 - `bun run dev:server`: Start only the server
 - `bun run check-types`: Check TypeScript types across all apps
 - `bun run test`: Run domain tests with Bun
-- `bun run check`: Run the read-only Biome review (existing starter debt may remain)
 - `bun run db:push`: Push schema changes to database
 - `bun run db:generate`: Generate database client/types
 - `bun run db:migrate`: Run database migrations
