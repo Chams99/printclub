@@ -13,6 +13,30 @@ disabled in production until server-side staff roles and audit logging exist.
 
 ## First deployment
 
+## Existing Dokploy deployment
+
+For the restored Dokploy application, keep the existing `printclub` app record
+and use the tracked `deploy/dokploy-production.compose.yml` when configuring
+its Git source.
+The Compose file builds the API and web services from this repository while
+keeping PostgreSQL in its existing, separate Dokploy record. It uses the
+root-owned runtime file at `/etc/dokploy/private-runtime/printclub/api.runtime.env`
+for API settings and the existing `printclub_internal` and `dokploy-network`
+networks. Do not run the standalone `deploy/compose.yml` against that project:
+it also declares a PostgreSQL container and migration service.
+
+Set the existing public web build values in Dokploy Compose variables before
+building: `VITE_SERVER_URL`, `VITE_GOOGLE_CLIENT_ID`, and
+`VITE_TURNSTILE_SITE_KEY`. `VITE_SERVER_URL` must be
+`https://api.printclub.chames.tn`; the client ID and Turnstile site key are
+public build-time values, not server secrets. Keep API credentials only in the
+private runtime file. Leave Auto Deploy off during a controlled source switch,
+verify both health routes and strict-TLS public routes, and retain the prior
+Raw Compose configuration and images for rollback.
+
+The standalone first-deployment instructions below remain for a separate
+self-managed Docker installation.
+
 On the VPS, clone the repository and make sure the existing Traefik network is
 present:
 
