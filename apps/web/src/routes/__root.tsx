@@ -12,11 +12,28 @@ import {
 import type { TRPCOptionsProxy } from "@trpc/tanstack-react-query";
 
 import Header from "../components/header";
-
 import appCss from "../index.css?url";
+import { developer, developerPerson } from "../lib/developer";
 
 // Link previews need absolute URLs.
 const siteUrl = "https://printclub.chames.tn";
+
+const structuredData = {
+	"@context": "https://schema.org",
+	"@graph": [
+		{
+			"@type": "WebSite",
+			"@id": `${siteUrl}/#website`,
+			url: `${siteUrl}/`,
+			name: "printclub",
+			description:
+				"Turn the camera roll into a beautiful photo print with the printclub studio.",
+			inLanguage: "en",
+			creator: { "@id": developerPerson["@id"] },
+		},
+		developerPerson,
+	],
+};
 
 // Headlines use both faces above the fold; preloading them avoids a visible font swap.
 const fontPreloads = [interLatin, serifItalicLatin].map((href) => ({
@@ -71,8 +88,16 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 			{ property: "og:image:width", content: "1200" },
 			{ property: "og:image:height", content: "630" },
 			{ name: "twitter:card", content: "summary_large_image" },
+			{ name: "author", content: developer.name },
+		],
+		scripts: [
+			{
+				type: "application/ld+json",
+				children: JSON.stringify(structuredData),
+			},
 		],
 		links: [
+			{ rel: "author", href: developer.portfolio },
 			...fontPreloads,
 			{
 				rel: "stylesheet",

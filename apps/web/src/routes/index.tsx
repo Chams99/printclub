@@ -3,6 +3,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowUpRight, Camera, Check, ChevronRight } from "lucide-react";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 
+import MadeBy from "@/components/made-by";
 import { responsiveImage } from "@/lib/images";
 
 type TemplateGroupId = (typeof templateGroups)[number]["id"];
@@ -478,6 +479,7 @@ function HomePage() {
 							Sign in
 						</Link>
 					</nav>
+					<MadeBy />
 					<small>Portfolio demo · No payment or fulfillment connected</small>
 				</footer>
 			</main>
