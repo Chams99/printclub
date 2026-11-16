@@ -2,6 +2,7 @@ import { catalog } from "@PhotoPrinting/api/domain/print";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowUpRight, Camera, Check, ChevronRight } from "lucide-react";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import MadeBy from "@/components/made-by";
 import { responsiveImage } from "@/lib/images";
@@ -29,6 +30,61 @@ export const Route = createFileRoute("/")({
 });
 
 const easeOut = [0.22, 1, 0.36, 1] as const;
+
+function handleTabKeyDown(
+	event: ReactKeyboardEvent<HTMLButtonElement>,
+	index: number,
+	count: number,
+	onSelect: (index: number) => void,
+) {
+	let nextIndex: number;
+	switch (event.key) {
+		case "ArrowRight":
+			nextIndex = (index + 1) % count;
+			break;
+		case "ArrowLeft":
+			nextIndex = (index - 1 + count) % count;
+			break;
+		case "Home":
+			nextIndex = 0;
+			break;
+		case "End":
+			nextIndex = count - 1;
+			break;
+		default:
+			return;
+	}
+
+	event.preventDefault();
+	const tabList = event.currentTarget.closest('[role="tablist"]');
+	if (!tabList) return;
+	const nextTab =
+		tabList.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIndex];
+	if (!nextTab) return;
+
+	const revealTab = () => {
+		const listBounds = tabList.getBoundingClientRect();
+		const tabBounds = nextTab.getBoundingClientRect();
+		const hasHorizontalOverflow = tabList.scrollWidth > tabList.clientWidth;
+		if (hasHorizontalOverflow && nextIndex === 0) {
+			tabList.scrollLeft = 0;
+		} else if (hasHorizontalOverflow && nextIndex === count - 1) {
+			tabList.scrollLeft = tabList.scrollWidth - tabList.clientWidth;
+		} else if (
+			tabBounds.left < listBounds.left ||
+			tabBounds.right > listBounds.right ||
+			tabBounds.top < 0 ||
+			tabBounds.bottom > window.innerHeight
+		) {
+			nextTab.scrollIntoView({ block: "nearest", inline: "nearest" });
+		}
+	};
+
+	revealTab();
+	nextTab.focus({ preventScroll: true });
+	onSelect(nextIndex);
+	requestAnimationFrame(() => requestAnimationFrame(revealTab));
+}
 
 const templateGroups = [
 	{
@@ -207,18 +263,8 @@ function HomePage() {
 						</p>
 					</div>
 					<div className="format-gallery-v2">
-						<div className="format-gallery-v2__image" aria-live="polite">
-							<AnimatePresence initial={false}>
-								<FormatPreview
-									key={selectedProduct.id}
-									product={selectedProduct}
-									image={formatImages[selectedFormat].image}
-									alt={formatImages[selectedFormat].alt}
-								/>
-							</AnimatePresence>
-						</div>
 						<div
-							className="format-gallery-v2__list"
+							className="format-gallery-v2__list order-2"
 							role="tablist"
 							aria-label="Print formats"
 						>
@@ -226,8 +272,23 @@ function HomePage() {
 								<button
 									type="button"
 									role="tab"
+									id={`format-tab-${product.id}`}
+									aria-controls="format-preview-panel"
 									aria-selected={selectedFormat === index}
+									tabIndex={selectedFormat === index ? 0 : -1}
 									className={selectedFormat === index ? "is-active" : ""}
+									onKeyDown={(event) =>
+										handleTabKeyDown(
+											event,
+											index,
+											catalog.length,
+											(nextIndex) =>
+												updateSearch({
+													format:
+														nextIndex === 0 ? undefined : catalog[nextIndex].id,
+												}),
+										)
+									}
 									onClick={() =>
 										updateSearch({
 											format: index === 0 ? undefined : product.id,
@@ -243,6 +304,23 @@ function HomePage() {
 									<ChevronRight aria-hidden="true" />
 								</button>
 							))}
+						</div>
+						<div
+							id="format-preview-panel"
+							className="format-gallery-v2__image order-1"
+							role="tabpanel"
+							aria-labelledby={`format-tab-${selectedProduct.id}`}
+							tabIndex={0}
+							aria-live="polite"
+						>
+							<AnimatePresence initial={false}>
+								<FormatPreview
+									key={selectedProduct.id}
+									product={selectedProduct}
+									image={formatImages[selectedFormat].image}
+									alt={formatImages[selectedFormat].alt}
+								/>
+							</AnimatePresence>
 						</div>
 					</div>
 					<div className="format-gallery-v2__details">
@@ -280,16 +358,37 @@ function HomePage() {
 						</p>
 					</div>
 					<div
-						className="template-filters"
+						className="template-filters overflow-x-auto p-1"
 						role="tablist"
 						aria-label="Template categories"
 					>
-						{templateGroups.map((group) => (
+						{templateGroups.map((group, index) => (
 							<button
 								type="button"
 								role="tab"
+								id={`template-tab-${group.id}`}
+								aria-controls="template-preview-panel"
 								aria-selected={templateFilter === group.id}
-								className={templateFilter === group.id ? "is-active" : ""}
+								tabIndex={templateFilter === group.id ? 0 : -1}
+								className={
+									templateFilter === group.id
+										? "is-active !min-h-11 max-[360px]:last:mr-1"
+										: "!min-h-11 max-[360px]:last:mr-1"
+								}
+								onKeyDown={(event) =>
+									handleTabKeyDown(
+										event,
+										index,
+										templateGroups.length,
+										(nextIndex) =>
+											updateSearch({
+												collection:
+													templateGroups[nextIndex].id === "all"
+														? undefined
+														: templateGroups[nextIndex].id,
+											}),
+									)
+								}
 								onClick={() =>
 									updateSearch({
 										collection: group.id === "all" ? undefined : group.id,
@@ -301,7 +400,12 @@ function HomePage() {
 							</button>
 						))}
 					</div>
-					<div className="template-feature reveal-on-scroll">
+					<div
+						id="template-preview-panel"
+						className="template-feature reveal-on-scroll"
+						role="tabpanel"
+						aria-labelledby={`template-tab-${templateFilter}`}
+					>
 						<div className="template-feature__media">
 							<AnimatePresence initial={false}>
 								<motion.img
